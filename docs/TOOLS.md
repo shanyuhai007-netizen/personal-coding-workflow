@@ -72,7 +72,7 @@ python3 scripts/evidence.py validate /path/to/evidence/task.json --repo /path/to
 
 校验当前树、必需条件通过及证据 hash、检查状态 / 前后树 / 日志 hash、组件模式 / 源副本 / 执行证据、两轴评审与独立性。缺失、过期、失败或格式错误返回非零。输出 `RECORD_VALID` 只表示声明的记录符合结构与一致性要求；条件是否完整、证据是否真实、语义与品味仍需 Agent 判断。
 
-`independent_required` 默认 true；项目允许受限自查时须写明确理由后显式设 false，交付仍注明受限。硬性独立要求不因缺能力而取消。外部服务、忽略配置或模型版本变化不会自动反映在 Git tree，需人工记录环境身份并使受影响证据失效。JSON 记录迁移位置时更新路径并重验。
+`independent_required` 默认 true；项目允许受限自查时须填写非空 `independence_reason` 后显式设 false，交付仍注明受限。硬性独立要求不因缺能力而取消。外部服务、忽略配置或模型版本变化不会自动反映在 Git tree，需人工记录环境身份并使受影响证据失效。JSON 记录迁移位置时更新路径并重验。
 
 ## 安装恢复
 

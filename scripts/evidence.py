@@ -127,6 +127,8 @@ def component(args):
         raise ValueError('A component source is required for native/read/reuse modes')
     out = Path(args.out).resolve()
     proof = Path(args.proof).read_bytes()
+    if not proof.strip():
+        raise ValueError('Execution proof must be nonempty')
     sources = [Path(p).resolve() for p in ([args.skill] if args.skill else []) + args.file]
     data = [(p, p.read_bytes()) for p in sources]
     out.mkdir(parents=True, exist_ok=False)
@@ -160,6 +162,11 @@ def validate(record, repo):
     path = Path(record).resolve()
     parent = path.parent
     task = json.loads(path.read_text())
+    independent_required = task.get('independent_required', True)
+    if type(independent_required) is not bool:
+        raise ValueError('independent_required must be a boolean')
+    if not independent_required and not str(task.get('independence_reason', '')).strip():
+        raise ValueError('Limited review requires an independence_reason')
     root = git(repo, 'rev-parse', '--show-toplevel')
     tree = code_tree(root)
     if task['tree'] != tree:
@@ -206,7 +213,9 @@ def validate(record, repo):
         review = matching[0]
         if review['status'] != 'pass' or review['tree'] != tree:
             raise ValueError('Unresolved or stale review: ' + axis)
-        if task.get('independent_required', True) and review['independent'] is not True:
+        if type(review['independent']) is not bool:
+            raise ValueError('Review independence must be a boolean')
+        if independent_required and review['independent'] is not True:
             raise ValueError('Independent review missing: ' + axis)
         verify_artifact(parent, review['evidence'])
     print('RECORD_VALID: declared evidence checks passed; semantic review remains agent responsibility')

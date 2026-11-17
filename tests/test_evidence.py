@@ -101,11 +101,25 @@ class EvidenceTests(unittest.TestCase):
         task['conditions'][0]['status'] = 'unverified'
         self.assertNotEqual(validate().returncode, 0)
         task['conditions'][0]['status'] = 'pass'
+        task['independent_required'] = None
+        self.assertNotEqual(validate().returncode, 0)
+        task['independent_required'] = False
+        self.assertNotEqual(validate().returncode, 0)
+        task['independent_required'] = True
         task['reviews'][0]['independent'] = False
         self.assertNotEqual(validate().returncode, 0)
         task['reviews'][0]['independent'] = True
         (self.repo / 'app.txt').write_text('later change\n')
         self.assertNotEqual(validate().returncode, 0)
+
+    def test_component_rejects_empty_execution_proof_before_writing(self):
+        proof = self.root / 'empty.md'
+        proof.write_text('')
+        out = self.root / 'component'
+        result = self.cli('component', '--name', 'fixture', '--mode', 'degraded', '--proof', proof,
+                          '--reason', 'Not installed in isolated fixture', '--adaptation', 'pc-0.2', '--out', out)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(out.exists())
 
     def test_archive_survives_source_removal_and_detects_tampering(self):
         source = self.root / 'samples.tsv'

@@ -11,4 +11,4 @@
 
 本版确定性测试使用合成 Git / 文件案例；新上下文测试使用隔离小任务。它们不能替代三个客户端各自的原生发现、自动路由与真实编码闭环。发布时的实际验证记录以 CHANGELOG.md 为准，未记录通过的层级保持未验证。
 
-官方机制参考：[Claude Code skills](https://code.claude.com/docs/en/skills)、[Codex skills](https://developers.openai.com/codex/skills/)。接入时按已装版本核对；目录约定不保证未来版本一致。没有原生 Skill 工具时，按当前环境允许方式读取并执行，记录 `read`。
+官方机制参考：[Claude Code skills](https://code.claude.com/docs/en/skills)、[Codex skills](https://learn.chatgpt.com/docs/build-skills)。接入时按已装版本核对；目录约定不保证未来版本一致。没有原生 Skill 工具时，按当前环境允许方式读取并执行，记录 `read`。
