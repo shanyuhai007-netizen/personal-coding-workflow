@@ -105,6 +105,11 @@ class EvidenceTests(unittest.TestCase):
         self.assertNotEqual(validate().returncode, 0)
         task['independent_required'] = False
         self.assertNotEqual(validate().returncode, 0)
+        for malformed in (None, False, [], {}):
+            task['independence_reason'] = malformed
+            self.assertNotEqual(validate().returncode, 0)
+        task['independence_reason'] = 'Fixture explicitly permits limited self-review'
+        self.assertEqual(validate().returncode, 0)
         task['independent_required'] = True
         task['reviews'][0]['independent'] = False
         self.assertNotEqual(validate().returncode, 0)

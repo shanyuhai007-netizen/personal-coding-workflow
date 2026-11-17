@@ -165,7 +165,8 @@ def validate(record, repo):
     independent_required = task.get('independent_required', True)
     if type(independent_required) is not bool:
         raise ValueError('independent_required must be a boolean')
-    if not independent_required and not str(task.get('independence_reason', '')).strip():
+    reason = task.get('independence_reason', '')
+    if not independent_required and (not isinstance(reason, str) or not reason.strip()):
         raise ValueError('Limited review requires an independence_reason')
     root = git(repo, 'rev-parse', '--show-toplevel')
     tree = code_tree(root)
