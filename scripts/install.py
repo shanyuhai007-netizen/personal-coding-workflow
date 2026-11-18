@@ -11,7 +11,7 @@ import uuid
 FILES = (
     'VERSION', 'SKILL.md', 'WORKFLOW.md', 'ADAPTERS.md', 'README.md',
     'PROJECT.template.md', 'TASK.template.md', 'RELEASE.template.md', 'ROUTING.md',
-    'scripts/evidence.py', 'scripts/workflow.py', 'scripts/workflow_rules.json',
+    'scripts/evidence.py', 'scripts/workflow.py', 'scripts/acceptance.py', 'scripts/workflow_rules.json',
     'scripts/zcode_hook.py', 'docs/EXECUTION.md', 'docs/ZCODE.md', 'docs/TOOLS.md', 'docs/COMPONENTS.md', 'docs/BENCHMARK.md',
     'docs/COMPATIBILITY.md', 'LICENSE', 'CHANGELOG.md',
 )

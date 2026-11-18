@@ -18,6 +18,7 @@ class HookTests(unittest.TestCase):
     state = contract.WorkflowTests.state
     make_receipt = contract.WorkflowTests.make_receipt
     complete = contract.WorkflowTests.complete
+    accept = contract.WorkflowTests.accept
     def hook(self, kind, **extra):
         event = {'hook_event_name': kind, 'session_id': 'fixture-session', 'cwd': str(self.repo)}
         event.update(extra)

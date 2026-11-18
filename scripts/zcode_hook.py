@@ -19,6 +19,8 @@ def event_value(event, snake, camel, default=None):
 def guard(task):
     wf.refresh(task)
     missing = [error for stage in task['stages'] for error in wf.problems(task, stage)]
+    if task['stages']:
+        missing += wf.ac.problems(task)
     missing += ['operation ' + k + ' is unknown; reconcile before retry' for k, v in task.get('operations', {}).items() if v['status'] == 'unknown']
     if task['status'] not in ('VERIFIED', 'ANSWER_ONLY'):
         missing += ['run finish after satisfying all required stages']

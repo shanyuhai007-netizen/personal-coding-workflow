@@ -3,7 +3,6 @@ import argparse
 from contextlib import contextmanager
 import fcntl
 import hashlib
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,6 +10,7 @@ import tempfile
 import time
 
 import evidence as ev
+import acceptance as ac
 
 RULES = Path(__file__).with_name('workflow_rules.json')
 
@@ -109,6 +109,7 @@ def plan(args):
         raise ValueError('Positive max_attempts required')
     root = ev.outside_repo(args.repo, args.record)
     stages = compile_stages(facts, rules)
+    conditions = ac.conditions(source, Path(args.facts).resolve().parent) if stages else []
     with locked(args.record) as path:
         if path.exists():
             old = load(path, root)
@@ -125,20 +126,21 @@ def plan(args):
             order = {r['id']: i for i, r in enumerate(rules['stages'])}
             stages.sort(key=lambda s: order[s['id']])
             set_dependencies(stages, rules)
-            changed_plan_facts = old['facts'] != facts or old['goal'] != source['goal']
+            changed_plan_facts = old['facts'] != facts or old['goal'] != source['goal'] or old.get('conditions') != conditions
             if changed_plan_facts:
                 stage_by_id({'stages': stages}, 'preflight')['status'] = 'needs_verification'
-            revisions = old['revisions'] + [{'reason': args.reason, 'facts': facts, 'at': time.time()}]
+            revisions = old['revisions'] + [{'reason': args.reason, 'goal': source['goal'], 'facts': facts, 'conditions': conditions, 'at': time.time()}]
             task = old
             task.update(stages=stages, revisions=revisions, facts=facts, goal=source['goal'], status='IN_PROGRESS')
         else:
             task = {'schema': 1, 'task_id': source['task_id'], 'repo': str(root), 'goal': source['goal'],
                     'facts': facts, 'stages': stages, 'status': 'IN_PROGRESS',
-                    'revisions': [{'reason': 'initial', 'facts': facts, 'at': time.time()}],
+                    'revisions': [{'reason': 'initial', 'goal': source['goal'], 'facts': facts, 'conditions': conditions, 'at': time.time()}],
                     'max_attempts': budget, 'events': [], 'external_actions': {},
                     'component_sources': source.get('component_sources', {}),
                     'rules_hash': ev.sha(RULES), 'host': {'status': 'not_observed'}}
         task['component_sources'] = {**task.get('component_sources', {}), **source.get('component_sources', {})}
+        task['conditions'] = conditions
         task['rules_hash'] = ev.sha(RULES)
         refresh(task)
         save(path, task)
@@ -164,6 +166,9 @@ def identity(task, stage, inputs):
     value = {'files': {str(Path(p).resolve()): ev.sha(p) for p in inputs}}
     if stage.get('scope') == 'tree':
         value['tree'] = ev.code_tree(task['repo'])
+    if stage['id'] in ('standards', 'spec-review', 'close'):
+        value['acceptance'] = digest(task.get('acceptance'))
+        value['conditions'] = digest(task.get('conditions'))
     if not value['files'] and 'tree' not in value:
         raise ValueError('Stage needs relevant input files')
     return value
@@ -175,6 +180,9 @@ def verify_identity(task, value):
             raise ValueError('Changed stage input: ' + path)
     if 'tree' in value and ev.code_tree(task['repo']) != value['tree']:
         raise ValueError('Changed code tree')
+    for key in ('conditions', 'acceptance'):
+        if key in value and value[key] != digest(task.get(key)):
+            raise ValueError('Changed ' + key + '; recheck review/closure inputs')
 
 
 def verify_receipt(task, stage, receipt_path):
@@ -192,6 +200,8 @@ def verify_receipt(task, stage, receipt_path):
         raise ValueError('Component adaptation is required')
     if receipt['verification'] != 'pass':
         raise ValueError('Stage verification is not pass')
+    if stage['id'] in ('standards', 'spec-review', 'close') and not {'conditions', 'acceptance'} <= receipt['input_identity'].keys():
+        raise ValueError('Original conditions and acceptance identity required; recheck legacy review/closure')
     verify_identity(task, receipt['input_identity'])
     for item in receipt['sources'] + receipt['artifacts'] + [receipt['observed_event_ref']]:
         ev.verify_artifact(receipt_path.parent, item)
@@ -298,6 +308,8 @@ def refresh(task):
                 stage['status'] = 'needs_verification'
                 stage['invalidated_reason'] = errors or ['Dependency changed']
                 task['status'] = 'IN_PROGRESS'
+    if task['stages'] and ac.problems(task) and task['status'] == 'VERIFIED':
+        task['status'] = 'IN_PROGRESS'
 
 
 def view(task):
@@ -321,13 +333,14 @@ def operate(args):
             print(json.dumps(stage, ensure_ascii=False) if args.json else view(task))
             return 0
         if args.command == 'finish':
-            missing = ['operation ' + k + ' remains unknown; reconcile before retry' for k, v in task.get('operations', {}).items() if v['status'] == 'unknown'] + [p for s in task['stages'] for p in problems(task, s)]
+            missing = (ac.problems(task) if task['stages'] else []) + ['operation ' + k + ' remains unknown; reconcile before retry' for k, v in task.get('operations', {}).items() if v['status'] == 'unknown'] + [p for s in task['stages'] for p in problems(task, s)]
             if missing:
                 save(path, task)
                 raise ValueError('Missing requirements; complete/verify: ' + '; '.join(missing))
             task['status'] = 'VERIFIED' if task['stages'] else 'ANSWER_ONLY'
             save(path, task)
             print(task['status'] + ': record consistency only; external actions require separate authorization')
+            print(ac.summary(task))
             return 0
         stage = stage_by_id(task, args.stage)
         if any(v['stage_id'] == stage['id'] and v['status'] == 'unknown' for v in task.get('operations', {}).values()):
@@ -454,7 +467,26 @@ def component_event(args):
     return 0
 
 
+def acceptance(args):
+    with locked(args.record) as path:
+        task = load(path)
+        value = ac.capture(task, args.report)
+        if task.get('acceptance') != value:
+            if task.get('acceptance'):
+                task.setdefault('acceptance_history', []).append(task['acceptance'])
+            task['acceptance'] = value
+            task['status'] = 'IN_PROGRESS'
+        refresh(task)
+        save(path, task)
+    print(ac.summary(task))
+    print('Observations captured; run finish after required acceptance and reviews')
+    return 0
+
+
 def add_parsers(sub):
+    p = sub.add_parser('acceptance', help='Capture observations against original conditions; never grants completion')
+    p.add_argument('record')
+    p.add_argument('--report', required=True)
     p = sub.add_parser('stage-resume', help='Begin a new bounded attempt cycle after a concrete fix')
     p.add_argument('record')
     p.add_argument('--stage', required=True)
@@ -499,6 +531,8 @@ def add_parsers(sub):
 
 
 def dispatch(args):
+    if args.command == 'acceptance':
+        return acceptance(args)
     if args.command == 'component-event':
         return component_event(args)
     if args.command == 'stage-resume':

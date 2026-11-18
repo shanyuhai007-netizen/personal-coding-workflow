@@ -24,6 +24,8 @@ class WorkflowTests(unittest.TestCase):
         self.git('add', '.')
         self.git('commit', '-qm', 'fixture')
         self.record = self.root / 'task.json'
+        self.contract = self.root / 'acceptance.md'
+        self.contract.write_text('Local fixture behavior must be checked.\n')
 
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args]).decode().strip()
@@ -42,7 +44,10 @@ class WorkflowTests(unittest.TestCase):
             source.write_text('Synthetic ' + name + ' source.\n')
             sources[name] = str(source)
         path.write_text(json.dumps({'component_sources': sources, 'task_id': 'fixture-task', 'goal': 'Exercise public contract',
-                                    'facts': facts, 'max_attempts': 3}))
+                                    'facts': facts, 'max_attempts': 3,
+                                    'conditions': [{'id': 'local', 'source': str(self.contract),
+                                                    'locator': 'line 1', 'requirement': 'Local fixture behavior must be checked.',
+                                                    'target': 'local fixture'}]}))
         return self.cli('plan', '--facts', path, '--record', self.record)
 
     def state(self):
@@ -101,8 +106,130 @@ class WorkflowTests(unittest.TestCase):
         return out
 
     def complete(self, stage, obligation='output', **options):
+        if stage in ('standards', 'spec-review', 'close') and not self.state().get('acceptance'):
+            self.assertEqual(self.accept().returncode, 0)
         path = self.make_receipt(stage, obligation, **options)
         return self.cli('stage-complete', self.record, '--stage', stage, '--receipt', path)
+
+    def accept(self, rows=None):
+        raw = self.root / 'observation.txt'
+        raw.write_text('Observed fixture operation returns expected result locally.\n')
+        rows = rows if rows is not None else [{'id': 'local', 'status': 'pass',
+                'behavior': 'Run fixture operation', 'target': 'local fixture',
+                'observation': 'Returned expected fixture result', 'evidence': [str(raw)]}]
+        report = self.root / 'acceptance-report.json'
+        report.write_text(json.dumps(rows))
+        return self.cli('acceptance', self.record, '--report', report)
+
+    def test_green_stages_do_not_replace_missing_original_acceptance(self):
+        self.assertEqual(self.plan().returncode, 0)
+        for stage in ('preflight', 'document', 'verify', 'close'):
+            receipt = self.make_receipt(stage)
+            self.assertEqual(self.cli('stage-complete', self.record, '--stage', stage,
+                                     '--receipt', receipt).returncode, 0)
+        # Every stage and captured check passed, but the original required behavior is unverified.
+        result = self.cli('finish', self.record)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn('local', result.stderr)
+        self.assertNotEqual(self.state()['status'], 'VERIFIED')
+
+    def test_unknown_original_environment_cannot_be_replaced_by_neighbor(self):
+        self.assertEqual(self.plan().returncode, 0)
+        self.assertEqual(self.accept([{'id': 'local', 'status': 'unknown',
+            'next_action': 'Replay original operation in local fixture'}]).returncode, 0)
+        self.assertIn('Replay original', self.cli('finish', self.record).stderr)
+        result = self.accept([{'id': 'local', 'status': 'pass', 'behavior': 'Run operation',
+            'target': 'neighbor fixture', 'observation': 'OK', 'evidence': ['observation.txt']}])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('target differs', result.stderr)
+
+    def test_one_passing_condition_does_not_cover_required_production_replay(self):
+        self.assertEqual(self.plan().returncode, 0)
+        path = self.root / 'facts.json'
+        facts = json.loads(path.read_text())
+        facts['conditions'].append({'id': 'original-webview', 'source': str(self.contract),
+            'locator': 'original issue / required environment', 'requirement': 'Replay original cancellation',
+            'target': 'production original webview'})
+        path.write_text(json.dumps(facts))
+        self.assertEqual(self.cli('plan', '--facts', path, '--record', self.record,
+            '--reason', 'Original issue requires production webview replay as well as local checks').returncode, 0)
+        for stage in ('preflight', 'document', 'verify', 'close'):
+            self.assertEqual(self.complete(stage).returncode, 0)
+        result = self.cli('finish', self.record)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('original-webview: unverified', result.stderr)
+        self.assertNotEqual(self.state()['status'], 'VERIFIED')
+
+    def test_acceptance_changes_invalidate_review_and_sources_require_explicit_revision(self):
+        self.assertEqual(self.plan(intent='review').returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        self.assertEqual(self.complete('standards', 'code-review', reviewer='reviewer-a').returncode, 0)
+        self.assertEqual(self.complete('spec-review', 'code-review', reviewer='reviewer-b').returncode, 0)
+        self.assertEqual(self.complete('close').returncode, 0)
+        self.assertEqual(self.cli('finish', self.record).returncode, 0)
+        self.assertEqual(self.accept([{'id': 'local', 'status': 'unknown',
+                                     'next_action': 'Recheck contradicted observation'}]).returncode, 0)
+        self.assertNotEqual(self.state()['status'], 'VERIFIED')
+        self.assertEqual(json.loads(self.cli('next', self.record, '--json').stdout)['id'], 'standards')
+        self.assertEqual(len(self.state()['acceptance_history']), 1)
+        self.contract.write_text('Changed original environment requirement.\n')
+        self.assertNotEqual(self.accept().returncode, 0)
+        self.assertIn('changed evidence', self.cli('finish', self.record).stderr)
+        self.assertEqual(self.plan(intent='review').returncode, 2)
+        revised = self.cli('plan', '--facts', self.root / 'facts.json', '--record', self.record,
+                           '--reason', 'Original environment contract changed; recheck projected conditions')
+        self.assertEqual(revised.returncode, 0, revised.stderr)
+        self.assertEqual(json.loads(self.cli('next', self.record, '--json').stdout)['id'], 'preflight')
+
+    def test_legacy_review_receipt_must_bind_new_acceptance_inputs_after_migration(self):
+        self.assertEqual(self.plan(intent='review').returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        self.assertEqual(self.accept().returncode, 0)
+        path = self.make_receipt('standards', 'code-review', reviewer='legacy-reviewer')
+        legacy = json.loads(path.read_text())
+        # Synthetic v0.3.0 receipt shape, which predates acceptance identity fields.
+        legacy['input_identity'].pop('acceptance')
+        legacy['input_identity'].pop('conditions')
+        path.write_text(json.dumps(legacy))
+        result = self.cli('stage-complete', self.record, '--stage', 'standards', '--receipt', path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('acceptance identity', result.stderr)
+
+    def test_acceptance_evidence_and_code_tree_remain_current_after_finish(self):
+        self.test_short_document_path_recovers_across_processes_and_finishes()
+        (self.root / 'observation.txt').write_text('Contradicting new observation.\n')
+        result = self.cli('finish', self.record)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('changed evidence', result.stderr)
+        self.assertNotEqual(self.state()['status'], 'VERIFIED')
+        self.assertEqual(self.accept().returncode, 0)
+        (self.repo / 'new-untracked.txt').write_text('New deliverable invalidates observations.\n')
+        self.assertIn('Stale acceptance', self.cli('finish', self.record).stderr)
+
+    def test_missing_duplicate_and_unknown_conditions_are_rejected(self):
+        self.assertEqual(self.plan().returncode, 0)
+        facts_path = self.root / 'facts.json'
+        facts = json.loads(facts_path.read_text())
+        facts['conditions'] = []
+        facts_path.write_text(json.dumps(facts))
+        self.assertIn('conditions are required', self.cli('plan', '--facts', facts_path,
+                      '--record', self.root / 'other.json').stderr)
+        self.assertNotEqual(self.accept([{'id': 'wrong', 'status': 'unknown', 'next_action': 'Recheck'}]).returncode, 0)
+        row = {'id': 'local', 'status': 'unknown', 'next_action': 'Recheck'}
+        self.assertNotEqual(self.accept([row, row]).returncode, 0)
+        self.assertEqual(self.accept([]).returncode, 0)
+        self.assertIn('local: unverified', self.cli('finish', self.record).stderr)
+
+    def test_failed_acceptance_reports_actual_observation_and_remaining_action(self):
+        self.assertEqual(self.plan().returncode, 0)
+        (self.root / 'failed.log').write_text('fixture operation returned unexpected error code 7\n')
+        result = self.accept([{'id': 'local', 'status': 'fail', 'behavior': 'Invoke fixture operation',
+            'target': 'local fixture', 'observation': 'Returned unexpected error code 7',
+            'evidence': ['failed.log'], 'next_action': 'Fix error 7 and rerun original operation'}])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Returned unexpected error code 7', result.stdout)
+        self.assertIn('failed.log', result.stdout)
+        self.assertIn('Fix error 7', self.cli('finish', self.record).stderr)
 
     def test_short_document_path_recovers_across_processes_and_finishes(self):
         self.assertEqual(self.plan().returncode, 0)

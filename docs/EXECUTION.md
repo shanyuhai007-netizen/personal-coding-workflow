@@ -10,6 +10,10 @@
 {
   "task_id": "cli-empty-input",
   "goal": "空输入返回约定错误而不抛异常",
+  "conditions": [
+    {"id": "empty-input", "source": "/project/docs/SPEC.md", "locator": "CLI / 空输入",
+     "requirement": "空输入返回约定错误而不抛异常", "target": "local CLI fixture"}
+  ],
   "facts": {
     "intent": {"value": "implement", "evidence": "用户请求"},
     "bug": {"value": true, "evidence": "已运行的复现日志"},
@@ -53,7 +57,34 @@ reuse提供 `--reuse-check <当前适用性核验文件>`；所需组件仍须�
 python3 scripts/evidence.py finish /evidence/task.json
 ```
 
-仅所有必需项有效时写VERIFIED。未运行finish时，已启用的 [ZCode适配](ZCODE.md) 会在Stop反馈缺项；其他端无此自动保障。外部授权单独记录，不由VERIFIED授予。原始兼容命令validate只校验v0.2记录，不具备义务覆盖或宿主约束，不能代替新计划收口。
+仅所有必需阶段及下节原始条件的有效观测齐备时写VERIFIED。未运行finish时，已启用的 [ZCode适配](ZCODE.md) 会在Stop反馈缺项；其他端无此自动保障。外部授权单独记录，不由VERIFIED授予。原始兼容命令validate只校验v0.2记录，不具备义务覆盖或宿主约束，不能代替新计划收口。
+
+## 原始条件与逐项观测
+
+`conditions` 是项目既有验收入口的引用投影，每项必需：稳定 `id`、可读本地 `source`、原文位置 `locator`、条件原文 `requirement`、约定实例/环境 `target`。远端条件先保存允许本地留存的原文快照，注明 URL/版本。source 相对 facts.json 解析；工具保存其 hash，不解析自然语言。覆盖是否完整、投影是否忠实由 preflight 及独立评审核对，不能靠改 target 或用替身放宽原条件。纯问答不要求 conditions；旧实施计划需显式 replan 补齐。
+
+实际验收后复用既有日志/产物，写 JSON 观测列表。`pass/fail` 需要实际触发的 `behavior`、与原条件一致的 `target`、具体 `observation` 及非空原始 `evidence` 文件路径列表；`fail/unknown` 另写具体 `next_action`。`unknown` 未执行时可只写下一动作，已尝试时保留观察及原始证据；报告中提供的这些字段也会保存和展示。证据路径相对报告文件解析。每次报告使用新文件保留旧原文。
+
+```json
+[
+  {"id": "empty-input", "status": "pass", "behavior": "在 CLI 输入空字符串",
+   "target": "local CLI fixture", "observation": "返回约定错误，进程未抛异常",
+   "evidence": ["empty-input.log"]}
+]
+```
+
+```sh
+python3 scripts/evidence.py acceptance /evidence/task.json --report /evidence/observations-1.json
+python3 scripts/evidence.py finish /evidence/task.json
+```
+
+acceptance 只登记观测及当前完整树，不授予完成；缺项可先登记，finish 逐项拒绝缺失、失败或未知条件。工具自动保存报告/证据 hash、原条件及树身份；原文、证据或代码变化使旧观测失效。修订条件必须 replan 并写具体 reason，历史保留前后投影；同标签改写也需重新核验。观测变化会让两轴评审和 close 待验证，最终报告在评审前固定，返工后更新并复审。
+
+收口直接展示每项条件、行为、目标版本/实例/环境、观察、证据及剩余动作。树身份只能证明对应的本地代码；部署版本、真实服务实例和样本范围由原始证据及 reviewer 核对。只要求本地修复时 target 使用约定本地实例；生产发布状态单列。原请求要求生产故障消失时保留该条件，未复验不能以本地测试替代。
+
+评审材料按 [评审输入](../ADAPTERS.md#评审输入) 提供相关原始证据。结构与 hash 校验不证明观察真实或结论足够，检查日志全绿也不能独自证明全部原始目标达成。
+
+## 副作用对账
 
 真实副作用执行前，先确认授权并将单独授权凭据写入外部动作记录，再用 `operation task.json --stage close --operation-id <稳定操作身份> --result begin` 持久记录unknown。发生回执丢失时先查实际产物和远端操作身份，`--result applied|not_applied --proof <对账文件>`。工具本身不执行副作用；同身份不能再次begin，unknown阻止finish。对账后如需重试，必须确认幂等性/实际未执行，使用可追溯的新操作身份；不能因异常盲重试。
 
