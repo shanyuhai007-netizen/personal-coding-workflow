@@ -1,6 +1,6 @@
 # personal-coding-workflow
 
-让编码 Agent 接续任务、选用专业 skill、验证实际产物，并留下可复核证据的个人工作流。中文优先，跨 Codex / Claude Code / ZCode 使用普通 Markdown。本地发布版本 **0.3.0**；含可选任务阶段守卫与ZCode hook适配。ZCode隔离试点使用模拟provider，不证明真实模型路由或恢复能力；hooks需显式配置。
+让编码 Agent 接续任务、选用专业 skill、验证实际产物，并留下可复核证据的个人工作流。中文优先，跨 Codex / Claude Code / ZCode 使用普通 Markdown。本地实验候选版本 **0.3.0**，行为验收尚未完成；含可选任务阶段守卫与ZCode hook适配。ZCode隔离试点使用模拟provider，不证明真实模型路由或恢复能力；hooks需显式配置。
 
 目标是让 Agent 连续完成已授权工作：查证技术事实、复用已有决定和权限，只在缺少必要业务事实、偏好、凭据或授权时请人参与。小改走短路径，跨会话任务才写 spec / 依赖图。
 

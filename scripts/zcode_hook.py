@@ -122,16 +122,14 @@ def main():
             command = tool_input.get('command', '') if isinstance(tool_input, dict) else ''
             is_pretool = event_name == 'PreToolUse' and tool == 'Bash'
             commit = is_pretool and bool(re.search(r'\bgit\s+commit\b', command))
-            external_action = None
-            if is_pretool and re.search(r'\bgit\s+push\b', command):
-                external_action = 'push'
-            elif is_pretool and re.search(r'\bgh\s+pr\s+create\b', command):
-                external_action = 'pr_create'
-            elif is_pretool and re.search(r'\bgh\s+pr\s+merge\b', command):
-                external_action = 'pr_merge'
+            external_actions = [action for action, pattern in (
+                ('push', r'\bgit\s+push\b'),
+                ('pr_create', r'\bgh\s+pr\s+create\b'),
+                ('pr_merge', r'\bgh\s+pr\s+merge\b'),
+            ) if is_pretool and re.search(pattern, command)]
             if commit and task and task['status'] not in ('VERIFIED', 'ANSWER_ONLY'):
                 missing.append('local commit requires a verified local task')
-            if external_action:
+            for external_action in external_actions:
                 authorization = task.get('external_actions', {}).get(external_action, {}) if task else {}
                 try:
                     if authorization.get('status') != 'authorized':
@@ -139,7 +137,7 @@ def main():
                     ev.verify_artifact(path.parent, authorization['evidence'])
                 except (OSError, ValueError, KeyError, TypeError):
                     missing.append('external action ' + external_action + ' has no verifiable authorization evidence')
-            delivery = commit or external_action is not None
+            delivery = commit or bool(external_actions)
             if (event_name == 'Stop' or delivery) and missing:
                 message = 'PERSONAL_CODING_INCOMPLETE: ' + '; '.join(missing)
                 wf.save(directory / ('rejection-' + str(index) + '.json'), {'event': event_name, 'reason': message})

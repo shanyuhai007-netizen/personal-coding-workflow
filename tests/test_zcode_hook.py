@@ -94,6 +94,29 @@ class HookTests(unittest.TestCase):
         self.record.write_text(json.dumps(task))
         self.assertEqual(self.hook('PreToolUse', tool_name='Bash', tool_input={'command': 'git push origin main'}).returncode, 0)
 
+    def test_compound_command_requires_each_external_action_authorization(self):
+        self.test_push_requires_recorded_external_authorization()
+        commands = [
+            ('git push origin main && gh pr create --title fixture', 'pr_create'),
+            ('git push origin main; gh pr merge 1', 'pr_merge'),
+        ]
+        for command, missing in commands:
+            result = self.hook('PreToolUse', tool_name='Bash', tool_input={'command': command})
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn('external action ' + missing, result.stderr)
+        task = self.state()
+        task['external_actions']['pr_create'] = task['external_actions']['push']
+        self.record.write_text(json.dumps(task))
+        result = self.hook('PreToolUse', tool_name='Bash', tool_input={
+            'command': 'gh pr create --title fixture && gh pr merge 1'})
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn('external action pr_merge', result.stderr)
+        task = self.state()
+        task['external_actions']['pr_merge'] = task['external_actions']['push']
+        self.record.write_text(json.dumps(task))
+        self.assertEqual(self.hook('PreToolUse', tool_name='Bash', tool_input={
+            'command': 'git push origin main && gh pr create --title fixture && gh pr merge 1'}).returncode, 0)
+
     def test_new_session_can_resume_persisted_task_only_at_session_start(self):
         self.assertEqual(self.plan().returncode, 0)
         self.assertEqual(self.hook('SessionStart', source='startup').returncode, 0)
