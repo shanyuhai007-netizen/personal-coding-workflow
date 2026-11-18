@@ -134,6 +134,7 @@ class WorkflowInstallTests(unittest.TestCase):
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('snapshot', result.stdout)
+        self.assertIn('plan', result.stdout)
 
 
 if __name__ == "__main__":

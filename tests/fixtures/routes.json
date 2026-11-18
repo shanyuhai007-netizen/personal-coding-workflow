@@ -1,0 +1,12 @@
+[
+  {"id":"R01", "intent":"implement", "features":{"behavior_change":true,"nontrivial":true,"existing_implementation":true,"implementation_complete":true}, "required":["preflight","verify","standards","spec-review"], "forbidden":["implement","clarify","research"], "limit":"本例只断言不重复实现；已有树与旧证据仍需在preflight核验"},
+  {"id":"R02", "intent":"implement", "features":{}, "required":["preflight","document","verify","close"], "forbidden":["implement","protocol","standards"]},
+  {"id":"R03", "intent":"design", "features":{"performance":true,"formal_decision":true}, "required":["protocol","measure","fact-review","spec"], "forbidden":["implement","document"]},
+  {"id":"R04", "intent":"implement", "features":{"bug":true,"behavior_change":true}, "required":["diagnose","implement","verify"], "forbidden":["clarify","spec"]},
+  {"id":"R05", "intent":"implement", "features":{"ui":true,"react":true,"interaction":true,"behavior_change":true,"nontrivial":true}, "required":["web","react","implement","verify","standards","spec-review"], "forbidden":["clarify"]},
+  {"id":"R06", "intent":"implement", "features":{"multi_unit":true,"behavior_change":true,"nontrivial":true}, "required":["spec","implement","verify","standards","spec-review"], "forbidden":["clarify"], "limit":"单元依赖图及集成责任需核验spec产物，CLI不调度票组"},
+  {"id":"R07", "intent":"review", "features":{}, "required":["standards","spec-review"], "forbidden":["implement","document","verify"]},
+  {"id":"R08", "intent":"implement", "features":{"business_unknown":true,"behavior_change":true}, "required":["preflight","clarify","implement"], "forbidden":["protocol"]},
+  {"id":"R09", "intent":"implement", "features":{"unfamiliar_api":true,"behavior_change":true}, "required":["research","implement","verify"], "forbidden":["protocol","clarify"]},
+  {"id":"R10", "intent":"question", "features":{}, "required":[], "forbidden":["preflight","implement","document","close"], "limit":"此处仅测给定事实合成，实际问答不调用plan"}
+]

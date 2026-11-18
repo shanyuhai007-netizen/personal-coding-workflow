@@ -1,5 +1,7 @@
 # 本地证据工具
 
+新的任务闭环使用 [计划/阶段/收口](EXECUTION.md)；可选自动观察见 [ZCode适配](ZCODE.md)。下文validate保留旧记录兼容，只检查声明，不校验任务预期义务集合。
+
 从源仓库或已安装 skill 目录运行 `python3 scripts/evidence.py --help`。仅依赖 Python 3.10+ / Git；目标项目需已有 HEAD。工具产生的记录与日志留本地，不自动发布。
 
 ## 完整工作树评审
@@ -76,6 +78,6 @@ python3 scripts/evidence.py validate /path/to/evidence/task.json --repo /path/to
 
 ## 安装恢复
 
-`install.py` 只在源仓库运行，白名单分发运行文件及 evidence.py；不自动安装专业组件。目录同级保留 `.personal-coding.previous-*`，升级采用完整 staging、事务日志和目录切换。两个 rename 之间可能短暂没有目标目录，客户端应在升级结束后重新加载。
+`install.py` 只在源仓库运行，按 `scripts/install.py` 中的 `FILES` 白名单分发工作流规则、CLI、可选ZCode adapter和文档；不自动安装专业组件或启用hooks。目录同级保留 `.personal-coding.previous-*`，升级采用完整staging、事务日志和目录切换。两个rename之间可能短暂没有目标目录，客户端应在升级结束后重新加载。
 
 安装中断后直接重跑原安装命令，先恢复旧目录或采用已经切换好的完整目录，再验证本地改动。`--check` 始终只读，遇未完成事务报错。恢复后的用户改动仍拒绝覆盖；先备份、比较并显式迁移。stage / previous 残留供检查与回退，工具不自动删掉用户资料。回退时用已知旧版本源重新安装，正常保留被替换目录。并发安装不支持；不要在客户端同时写安装目录时升级。恢复面向进程中断，不保证断电场景。

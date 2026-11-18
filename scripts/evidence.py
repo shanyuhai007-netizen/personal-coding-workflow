@@ -224,6 +224,11 @@ def validate(record, repo):
 
 
 def main():
+    workflow_commands = {'plan', 'next', 'finish', 'stage-complete', 'stage-receipt', 'stage-resume', 'operation', 'component-event'}
+    workflow = None
+    if sys.argv[1:2] and sys.argv[1] in workflow_commands:
+        sys.dont_write_bytecode = True
+        import workflow
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     snap = sub.add_parser('snapshot', help='Capture full worktree diff without touching real index')
@@ -251,8 +256,15 @@ def main():
     val = sub.add_parser('validate', help='Check supplied evidence records against current tree')
     val.add_argument('record')
     val.add_argument('--repo', default='.')
+    if workflow is not None:
+        workflow.add_parsers(sub)
+    elif sys.argv[1:] == ['--help'] or sys.argv[1:] == ['-h']:
+        for name in sorted(workflow_commands):
+            sub.add_parser(name, help='Task-scoped plan, execution, or completion command')
     args = parser.parse_args()
     try:
+        if args.command in workflow_commands:
+            return workflow.dispatch(args)
         if args.command == 'snapshot':
             return snapshot(args.repo, args.base, args.out)
         if args.command == 'run':
@@ -266,7 +278,7 @@ def main():
             return component(args)
         if args.command == 'validate':
             return validate(args.record, args.repo)
-    except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError, StopIteration) as exc:
         print('ERROR: ' + str(exc), file=sys.stderr)
         return 2
 

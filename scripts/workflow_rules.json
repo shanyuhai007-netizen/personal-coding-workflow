@@ -1,0 +1,318 @@
+{
+  "version": 1,
+  "facts": [
+    "behavior_change",
+    "bug",
+    "ui",
+    "react",
+    "interaction",
+    "nontrivial",
+    "multi_unit",
+    "performance",
+    "formal_decision",
+    "unfamiliar_api",
+    "business_unknown",
+    "existing_implementation",
+    "implementation_complete"
+  ],
+  "intents": [
+    "implement",
+    "design",
+    "review",
+    "research",
+    "question"
+  ],
+  "stages": [
+    {
+      "id": "preflight",
+      "goal": "核对目标、授权、当前树和旧产物",
+      "when": {},
+      "components": [],
+      "done_when": "目标、边界、完成条件及可复用产物已核验",
+      "after": []
+    },
+    {
+      "id": "clarify",
+      "goal": "查证并补齐必要业务事实",
+      "when": {
+        "any": [
+          "business_unknown"
+        ]
+      },
+      "components": [
+        "grilling"
+      ],
+      "done_when": "必要业务歧义解决，已有批准继续复用",
+      "after": [
+        "preflight"
+      ]
+    },
+    {
+      "id": "research",
+      "goal": "核实有关一手事实",
+      "when": {
+        "intents": [
+          "research"
+        ],
+        "any": [
+          "unfamiliar_api"
+        ],
+        "match": "or"
+      },
+      "components": [
+        "research"
+      ],
+      "done_when": "关键事实有一手出处及适用边界",
+      "after": [
+        "preflight"
+      ]
+    },
+    {
+      "id": "diagnose",
+      "goal": "复现、定位并固定失败信号",
+      "when": {
+        "any": [
+          "bug"
+        ]
+      },
+      "components": [
+        "diagnosing-bugs"
+      ],
+      "done_when": "最小复现已运行，根因有区分实验",
+      "after": [
+        "preflight"
+      ]
+    },
+    {
+      "id": "protocol",
+      "goal": "固定测量协议与停止预算",
+      "when": {
+        "any": [
+          "performance"
+        ]
+      },
+      "components": [
+        "diagnosing-bugs"
+      ],
+      "done_when": "指标单位、负载、分桶、样本和停止条件明确",
+      "after": [
+        "preflight"
+      ]
+    },
+    {
+      "id": "measure",
+      "goal": "运行测量、复算并封存",
+      "when": {
+        "any": [
+          "performance"
+        ]
+      },
+      "components": [],
+      "done_when": "实际环境的原始样本及同口径汇总可追溯",
+      "after": [
+        "protocol"
+      ]
+    },
+    {
+      "id": "fact-review",
+      "goal": "独立核验正式裁决的事实",
+      "when": {
+        "any": [
+          "formal_decision"
+        ],
+        "design_nontrivial": true
+      },
+      "components": [
+        "independent-fact-review"
+      ],
+      "independent": true,
+      "done_when": "从原始材料独立核验关键事实、语义和推论",
+      "after": [
+        "research",
+        "measure",
+        "diagnose"
+      ]
+    },
+    {
+      "id": "spec",
+      "goal": "形成或核验可实施契约与依赖",
+      "when": {
+        "any": [
+          "multi_unit",
+          "formal_decision"
+        ],
+        "match": "or",
+        "design_nontrivial": true
+      },
+      "components": [],
+      "done_when": "范围、可观察条件与依赖齐备，已有批准核验后复用",
+      "after": [
+        "clarify",
+        "research",
+        "fact-review",
+        "measure"
+      ]
+    },
+    {
+      "id": "web",
+      "goal": "核实现代Web平台做法",
+      "when": {
+        "intents": [
+          "implement"
+        ],
+        "all": [
+          "ui"
+        ]
+      },
+      "components": [
+        "modern-web-guidance"
+      ],
+      "done_when": "有关平台指导已应用到当前改动",
+      "after": [
+        "preflight"
+      ]
+    },
+    {
+      "id": "react",
+      "goal": "应用React性能指导",
+      "when": {
+        "intents": [
+          "implement"
+        ],
+        "all": [
+          "react"
+        ]
+      },
+      "components": [
+        "vercel-react-best-practices"
+      ],
+      "done_when": "相关React规则已核验并应用",
+      "after": [
+        "web"
+      ]
+    },
+    {
+      "id": "implement",
+      "goal": "按独立行为契约实现切片",
+      "when": {
+        "intents": [
+          "implement"
+        ],
+        "all": [
+          "behavior_change"
+        ]
+      },
+      "components": [
+        "tdd"
+      ],
+      "done_when": "公共边界逐切片red→green；已有实现可核验复用",
+      "after": [
+        "clarify",
+        "research",
+        "diagnose",
+        "spec",
+        "web",
+        "react"
+      ]
+    },
+    {
+      "id": "document",
+      "goal": "完成范围内文档改动",
+      "when": {
+        "intents": [
+          "implement"
+        ],
+        "none": [
+          "behavior_change"
+        ]
+      },
+      "components": [],
+      "scope": "tree",
+      "done_when": "范围内文档完成，相称检查通过",
+      "after": [
+        "clarify",
+        "research",
+        "spec"
+      ]
+    },
+    {
+      "id": "verify",
+      "goal": "驱动实际产物并验证完成条件",
+      "when": {
+        "intents": [
+          "implement"
+        ]
+      },
+      "components": [],
+      "scope": "tree",
+      "done_when": "适用成功/失败/交互/恢复路径有实际观察",
+      "after": [
+        "implement",
+        "document"
+      ]
+    },
+    {
+      "id": "standards",
+      "goal": "独立评审完整树的Standards",
+      "when": {
+        "intents": [
+          "review"
+        ],
+        "any": [
+          "nontrivial"
+        ],
+        "match": "or"
+      },
+      "components": [
+        "code-review"
+      ],
+      "scope": "tree",
+      "independent": true,
+      "done_when": "完整交付树Standards评审无未解决必要发现",
+      "after": [
+        "verify",
+        "spec",
+        "measure",
+        "research",
+        "clarify"
+      ]
+    },
+    {
+      "id": "spec-review",
+      "goal": "独立评审完整树的Spec",
+      "when": {
+        "intents": [
+          "review"
+        ],
+        "any": [
+          "nontrivial"
+        ],
+        "match": "or"
+      },
+      "components": [
+        "code-review"
+      ],
+      "scope": "tree",
+      "independent": true,
+      "done_when": "完整交付树Spec评审无未解决必要发现",
+      "after": [
+        "verify",
+        "spec",
+        "measure",
+        "research",
+        "clarify"
+      ]
+    },
+    {
+      "id": "close",
+      "goal": "封存证据并核对本地收口",
+      "when": {},
+      "components": [],
+      "scope": "tree",
+      "done_when": "必需阶段和条件齐备，未覆盖项及外部授权单列",
+      "after": [
+        "*"
+      ]
+    }
+  ]
+}

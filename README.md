@@ -1,6 +1,6 @@
 # personal-coding-workflow
 
-让编码 Agent 接续任务、选用专业 skill、验证实际产物，并留下可复核证据的个人工作流。中文优先，跨 Codex / Claude Code / ZCode 使用普通 Markdown。当前版本 **0.2.1**。
+让编码 Agent 接续任务、选用专业 skill、验证实际产物，并留下可复核证据的个人工作流。中文优先，跨 Codex / Claude Code / ZCode 使用普通 Markdown。本地发布版本 **0.3.0**；含可选任务阶段守卫与ZCode hook适配。ZCode隔离试点使用模拟provider，不证明真实模型路由或恢复能力；hooks需显式配置。
 
 目标是让 Agent 连续完成已授权工作：查证技术事实、复用已有决定和权限，只在缺少必要业务事实、偏好、凭据或授权时请人参与。小改走短路径，跨会话任务才写 spec / 依赖图。
 
@@ -35,6 +35,7 @@ python3 scripts/install.py --target codex --check
 | [ROUTING.md](ROUTING.md) | 按阶段加载专业组件，记录真实执行或具体降级理由 |
 | [ADAPTERS.md](ADAPTERS.md) | 复用批准、人工步骤适配、真实树评审输入 |
 | PROJECT.template.md / TASK.template.md / RELEASE.template.md | 项目契约、任务证据、分通道授权与发布状态 |
+| [执行闭环](docs/EXECUTION.md) / [ZCode适配](docs/ZCODE.md) | 从事实生成累计义务，核验阶段推进、输入失效和收口；宿主适配单独启用 |
 | [证据工具](docs/TOOLS.md) | WIP 快照、完整检查日志 / 原退出码、组件记录、归档和记录校验 |
 | [Benchmark 契约](docs/BENCHMARK.md) | 指标定义、可比环境 / 负载、原始样本与独立复算 |
 | [来源与依赖](docs/COMPONENTS.md) | 可选专业 skill 与来源致谢 |
