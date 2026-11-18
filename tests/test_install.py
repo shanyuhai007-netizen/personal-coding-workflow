@@ -1,6 +1,8 @@
 """Distribution invariants: preserve edits, reject collisions, verify copies."""
 
 import importlib.util
+import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -135,6 +137,86 @@ class WorkflowInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('snapshot', result.stdout)
         self.assertIn('plan', result.stdout)
+
+    def test_installed_acceptance_records_observations_and_refuses_incomplete_task(self):
+        installer.install(SCRIPT.parents[1], self.dest)
+        repo = self.root / 'repo'
+        repo.mkdir()
+        for args in (('init', '-q'), ('config', 'user.email', 'fixture@example.invalid'),
+                     ('config', 'user.name', 'Fixture')):
+            subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True)
+        (repo / 'app.txt').write_text('synthetic fixture\n')
+        subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(repo), 'commit', '-qm', 'fixture'],
+                       check=True, capture_output=True)
+
+        def cli(*args, expected=0):
+            # Execute the installed entry from a different cwd, ignoring PYTHON* env.
+            result = subprocess.run([sys.executable, '-E', str(self.dest / 'scripts/evidence.py'),
+                                     *map(str, args)], cwd=repo, capture_output=True, text=True)
+            self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+            return result
+
+        contract = self.root / 'contract.md'
+        contract.write_text('Check the fixture repository and replay a second operation.\n')
+        facts = self.root / 'facts.json'
+        facts.write_text(json.dumps({
+            'task_id': 'installed-acceptance', 'goal': 'Exercise installed acceptance gates',
+            'facts': {'intent': {'value': 'implement', 'evidence': str(contract)}},
+            'conditions': [
+                {'id': name, 'source': str(contract), 'locator': 'line 1',
+                 'requirement': requirement, 'target': 'local synthetic repository'}
+                for name, requirement in (('repository', 'Check the fixture repository'),
+                                          ('replay', 'Replay a second operation'))]}))
+        record = self.root / 'task.json'
+        cli('plan', '--facts', facts, '--record', record)
+        check = self.root / 'check'
+        cli('run', '--out', check, '--', 'git', 'rev-parse', '--is-inside-work-tree')
+        raw = check / 'output.log'
+        self.assertEqual(raw.read_text().strip(), 'true')
+        report = self.root / 'observations.json'
+        report.write_text(json.dumps([{
+            'id': 'repository', 'status': 'pass',
+            'behavior': 'git rev-parse --is-inside-work-tree',
+            'target': 'local synthetic repository', 'observation': raw.read_text().strip(),
+            'evidence': [str(raw)]}]))
+        cli('acceptance', record, '--report', report)
+        state = json.loads(record.read_text())
+        observation, = state['acceptance']['observations']
+        self.assertEqual(observation['id'], 'repository')
+        self.assertEqual(observation['status'], 'pass')
+        self.assertEqual(observation['observation'], 'true')
+        self.assertEqual(observation['evidence'][0]['sha256'],
+                         hashlib.sha256(raw.read_bytes()).hexdigest())
+        refused = cli('finish', record, expected=2)
+        self.assertIn('preflight', refused.stderr)
+        self.assertIn('replay: unverified', refused.stderr)
+        self.assertNotEqual(json.loads(record.read_text())['status'], 'VERIFIED')
+
+        # Complete synthetic stage declarations through the same installed CLI:
+        # green stages must still leave the unobserved original condition unmet.
+        proof = self.root / 'stage-proof.md'
+        proof.write_text('Synthetic stage fixture; repository check is in check/output.log.\n')
+        for stage in ('preflight', 'document', 'verify', 'close'):
+            event = self.root / (stage + '-event.json')
+            event.write_text(json.dumps({
+                'task_id': 'installed-acceptance', 'stage_id': stage, 'component': 'output',
+                'mode': 'read', 'status': 'success'}))
+            receipt = self.root / (stage + '-receipt.json')
+            args = ['stage-receipt', record, '--stage', stage, '--obligation', 'output',
+                    '--mode', 'read', '--verification', 'pass', '--event', event,
+                    '--artifact', proof, '--input', facts, '--adaptation', 'synthetic fixture',
+                    '--out', receipt]
+            if stage == 'verify':
+                args += ['--check', check / 'result.json']
+            cli(*args)
+            cli('stage-complete', record, '--stage', stage, '--receipt', receipt)
+        refused = cli('finish', record, expected=2)
+        self.assertIn('replay: unverified', refused.stderr)
+        self.assertNotIn('preflight:', refused.stderr)
+        state = json.loads(record.read_text())
+        self.assertNotEqual(state['status'], 'VERIFIED')
+        self.assertEqual(state['acceptance']['observations'], [observation])
 
 
 if __name__ == "__main__":
