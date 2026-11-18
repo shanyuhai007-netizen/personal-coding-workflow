@@ -13,7 +13,7 @@ FILES = (
     'PROJECT.template.md', 'TASK.template.md', 'RELEASE.template.md', 'ROUTING.md',
     'scripts/evidence.py', 'scripts/workflow.py', 'scripts/acceptance.py', 'scripts/workflow_rules.json',
     'scripts/zcode_hook.py', 'docs/EXECUTION.md', 'docs/ZCODE.md', 'docs/TOOLS.md', 'docs/COMPONENTS.md', 'docs/BENCHMARK.md',
-    'docs/COMPATIBILITY.md', 'LICENSE', 'CHANGELOG.md',
+    'docs/COMPATIBILITY.md', 'docs/VISUAL.md', 'LICENSE', 'CHANGELOG.md',
 )
 MARKER = '.personal-coding-install.json'
 ROOTS = {'codex': '.agents/skills', 'claude': '.claude/skills', 'zcode': '.zcode/skills'}

@@ -13,7 +13,8 @@
     "unfamiliar_api",
     "business_unknown",
     "existing_implementation",
-    "implementation_complete"
+    "implementation_complete",
+    "visual_change"
   ],
   "intents": [
     "implement",
@@ -160,8 +161,9 @@
         "intents": [
           "implement"
         ],
-        "all": [
-          "ui"
+        "any": [
+          "ui",
+          "visual_change"
         ]
       },
       "components": [
@@ -192,6 +194,31 @@
       ]
     },
     {
+      "id": "visual-direction",
+      "goal": "核验或探索视觉方向",
+      "when": {
+        "intents": [
+          "implement"
+        ],
+        "all": [
+          "visual_change"
+        ]
+      },
+      "components": [
+        "ui-taste-loop",
+        "frontend-design"
+      ],
+      "done_when": "方向、场景、截图集合和预算明确；已有批准核验后复用",
+      "after": [
+        "web",
+        "react",
+        "spec",
+        "clarify",
+        "research",
+        "diagnose"
+      ]
+    },
+    {
       "id": "implement",
       "goal": "按独立行为契约实现切片",
       "when": {
@@ -212,7 +239,8 @@
         "diagnose",
         "spec",
         "web",
-        "react"
+        "react",
+        "visual-direction"
       ]
     },
     {
@@ -223,7 +251,8 @@
           "implement"
         ],
         "none": [
-          "behavior_change"
+          "behavior_change",
+          "visual_change"
         ]
       },
       "components": [],
@@ -232,8 +261,55 @@
       "after": [
         "clarify",
         "research",
-        "spec"
+        "spec",
+        "visual-direction"
       ]
+    },
+    {
+      "id": "visual-build",
+      "goal": "完成纯视觉实现",
+      "when": {
+        "intents": [
+          "implement"
+        ],
+        "all": [
+          "visual_change"
+        ],
+        "none": [
+          "behavior_change"
+        ]
+      },
+      "components": [],
+      "done_when": "范围内视觉实现完成，必要行为检查通过",
+      "after": [
+        "visual-direction",
+        "web",
+        "react",
+        "diagnose"
+      ]
+    },
+    {
+      "id": "visual-review",
+      "goal": "独立比较最终界面并完成交付审计",
+      "when": {
+        "intents": [
+          "implement"
+        ],
+        "all": [
+          "visual_change"
+        ]
+      },
+      "components": [
+        "ui-taste-loop"
+      ],
+      "done_when": "按视觉适配协议核验最终截图，必需缺陷已处理、无重要回退、审计及真值有依据",
+      "after": [
+        "implement",
+        "visual-build",
+        "visual-direction"
+      ],
+      "scope": "tree",
+      "independent": true
     },
     {
       "id": "verify",
@@ -248,7 +324,8 @@
       "done_when": "适用成功/失败/交互/恢复路径有实际观察",
       "after": [
         "implement",
-        "document"
+        "document",
+        "visual-review"
       ]
     },
     {
@@ -274,7 +351,8 @@
         "spec",
         "measure",
         "research",
-        "clarify"
+        "clarify",
+        "visual-review"
       ]
     },
     {
@@ -300,7 +378,8 @@
         "spec",
         "measure",
         "research",
-        "clarify"
+        "clarify",
+        "visual-review"
       ]
     },
     {

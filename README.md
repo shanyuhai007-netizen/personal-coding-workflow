@@ -55,3 +55,7 @@ python3 -m unittest discover -s tests -v
 测试使用合成 Git / 文件案例，覆盖真实工作树评审、退出码 / 长日志、证据失效、安装保护与中断恢复。CI 在 Linux / macOS 的 Python 3.10 / 3.13 上运行同一套测试；运行结果以 GitHub Actions 为准。原生三客户端闭环尚需分别验证，见 [版本记录](CHANGELOG.md)。
 
 自有代码与文档采用 [MIT](LICENSE)。第三方 skill 各自许可独立，未随本仓库分发。
+
+## 视觉专项
+
+0.4.0 本地候选将 ui-taste-loop 接入视觉生成/改版阶段：已有方向复用、纯样式独立实现、最终截图独立评审，具体协议见 [VISUAL](docs/VISUAL.md)。上游 skill 单独提供，本包不自动安装；缺必需能力不能报完成。合成路由测试不证明审美效果，首次真实 UI 票仍需验证。

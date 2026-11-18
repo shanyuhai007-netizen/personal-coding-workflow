@@ -10,3 +10,5 @@
 这些组件均为可选外部依赖，各自许可独立。本仓库不自动下载或覆盖它们；安装缺失组件前核查其来源、许可与当前客户端支持。上游步骤的具体适配统一见 ADAPTERS.md。
 
 组件清单由每个项目按实际环境生成，记录真实源路径、内容 hash、版本（已知时）、读取 / 原生接口、适配版本。source hash 只锁定捕获的文件；读取其他参考文件时通过 component 的 `--file` 一起封存。不要用一个入口版本号推断全部跨客户端组件相同。
+
+- [ui-taste-loop](https://github.com/shanyuhai007-netizen/ui-taste-loop)：外部视觉专项流程；与 frontend-design 协作，接入差异见 [视觉适配](VISUAL.md)。当前效果仍需真实 UI 票验证。

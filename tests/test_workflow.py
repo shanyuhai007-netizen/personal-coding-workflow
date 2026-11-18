@@ -39,7 +39,7 @@ class WorkflowTests(unittest.TestCase):
         facts.update({k: {'value': v, 'evidence': 'synthetic fixture contract'} for k, v in features.items()})
         path = self.root / 'facts.json'
         sources = {}
-        for name in ('tdd', 'code-review', 'grilling', 'research', 'diagnosing-bugs', 'independent-fact-review', 'modern-web-guidance', 'vercel-react-best-practices'):
+        for name in ('tdd', 'code-review', 'grilling', 'research', 'diagnosing-bugs', 'independent-fact-review', 'modern-web-guidance', 'vercel-react-best-practices', 'ui-taste-loop', 'frontend-design'):
             source = self.root / (name + '.md')
             source.write_text('Synthetic ' + name + ' source.\n')
             sources[name] = str(source)
@@ -67,6 +67,39 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)['id'], 'preflight')
         self.assertNotEqual(self.state()['status'], 'VERIFIED')
 
+
+    def test_visual_only_work_has_direction_build_and_final_visual_gate(self):
+        result = self.plan(ui=True, visual_change=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stages = {s['id']: s for s in self.state()['stages']}
+        self.assertIn('visual-build', stages)
+        self.assertNotIn('document', stages)
+        self.assertIn('visual-direction', stages['visual-build']['depends_on'])
+        self.assertIn('web', stages['visual-direction']['depends_on'])
+        self.assertIn('visual-review', stages['verify']['depends_on'])
+        self.assertEqual(stages['visual-review']['components'], ['ui-taste-loop'])
+        self.assertEqual(stages['visual-review']['scope'], 'tree')
+        self.assertTrue(stages['visual-review']['independent'])
+
+    def test_visual_completion_and_behavior_paths_keep_visual_review(self):
+        for flags in ({'implementation_complete': True, 'existing_implementation': True},
+                      {'behavior_change': True}, {}):
+            with self.subTest(flags=flags):
+                self.record = self.root / ('task-' + str(len(list(self.root.glob('task-*.json')))) + '.json')
+                result = self.plan(ui=True, visual_change=True, **flags)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                stages = {s['id']: s for s in self.state()['stages']}
+                self.assertIn('visual-review', stages['verify']['depends_on'])
+                self.assertIn('visual-direction', stages['visual-review']['depends_on'])
+                if flags.get('behavior_change'):
+                    self.assertIn('implement', stages['visual-review']['depends_on'])
+                else:
+                    self.assertIn('visual-build', stages['visual-review']['depends_on'])
+
+    def test_logic_only_ui_does_not_start_taste_loop(self):
+        result = self.plan(ui=True, behavior_change=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(any(s['id'].startswith('visual-') for s in self.state()['stages']))
 
     def make_receipt(self, stage, obligation='output', mode='read', **options):
         proof = self.root / 'proof.md'
