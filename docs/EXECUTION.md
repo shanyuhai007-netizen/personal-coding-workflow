@@ -4,7 +4,7 @@
 
 ## 建立计划
 
-首次读取 [规则源](../scripts/workflow_rules.json)，将相关事实及依据写入 facts.json。没有提供的可选布尔事实按 false 处理，所以 Agent 必须复核遗漏；goal 是原请求的具体目标。component_sources 是实际可读的规范组件路径，不能指向另一目录中的同名文件。实际文件存在不表示宿主有原生调用能力。接续已有完整实现时明确填 `existing_implementation` 与 `implementation_complete`，计划会核验当前树并跳过implement，只补缺失的验收/评审；事实本身仍需在preflight核验。
+首次读取 [规则源](../scripts/workflow_rules.json)，将相关事实及依据写入 facts.json。台账面向 WORKFLOW.md 全路径任务；满足其小改硬判据的轻量任务不建 facts、计划与回执，保留检查日志和验证性本地提交即可，判据失守再进入本节流程。没有提供的可选布尔事实按 false 处理，所以 Agent 必须复核遗漏；goal 是原请求的具体目标。component_sources 是实际可读的规范组件路径，不能指向另一目录中的同名文件。实际文件存在不表示宿主有原生调用能力。接续已有完整实现时明确填 `existing_implementation` 与 `implementation_complete`，计划会核验当前树并跳过implement，只补缺失的验收/评审；事实本身仍需在preflight核验。
 
 ```json
 {
