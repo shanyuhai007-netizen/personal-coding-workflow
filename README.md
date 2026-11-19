@@ -38,7 +38,7 @@ python3 scripts/install.py --target codex --check
 | [执行闭环](docs/EXECUTION.md) / [ZCode适配](docs/ZCODE.md) | 从事实生成累计义务，核验阶段推进、输入失效和收口；宿主适配单独启用 |
 | [证据工具](docs/TOOLS.md) | WIP 快照、完整检查日志 / 原退出码、组件记录、归档和记录校验 |
 | [Benchmark 契约](docs/BENCHMARK.md) | 指标定义、可比环境 / 负载、原始样本与独立复算 |
-| [来源与依赖](docs/COMPONENTS.md) | 可选专业 skill 与来源致谢 |
+| [组件清单](docs/COMPONENTS.md) | 全部引用组件的性质、来源与获取线索；设计参考致谢 |
 
 非平凡改动采用覆盖最终树的 Standards / Spec 独立复核。检查日志、组件 hash、真实产物结果和重要样本留到持久位置；必要未验条件不能判完成。push、tracker、代码同步、部署分别记录授权及实际状态，已有明确授权持续沿用。
 

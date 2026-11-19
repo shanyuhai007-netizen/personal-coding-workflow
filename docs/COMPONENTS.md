@@ -1,14 +1,30 @@
 # 来源与依赖
 
-本项目自主维护核心工作流、模板及 Python 工具；无第三方运行时 Python 依赖。设计参考以下公开的一手资料；未打包第三方 skill 内容或复制受限语料。
+本项目自主维护核心工作流、模板及 Python 工具；无第三方运行时 Python 依赖。未打包第三方 skill 内容或复制受限语料。
 
-- [Matt Pocock skills](https://github.com/mattpocock/skills)：按任务阶段使用 grilling、tdd、code-review 等专业方法。名称与入口可能随上游改变；实际执行以当前安装原文及 hash 为准。
+## 组件清单
+
+工作流引用的全部组件逐项登记如下；性质为「内部程序」的不依赖外部 skill，按 WORKFLOW 与 [EXECUTION](EXECUTION.md) 对应机制执行，缺组件的加载与降级见 [ROUTING](../ROUTING.md)，上游步骤适配统一见 [ADAPTERS.md](../ADAPTERS.md)。组件均为可选外部依赖，各自许可独立；本仓库不自动下载或覆盖，安装前核查来源、许可与当前客户端支持。
+
+| 组件 | 性质 | 来源 | 引用位置 |
+|---|---|---|---|
+| grilling、tdd、code-review、diagnosing-bugs、research、retro、handoff、to-spec、to-tickets、implement、implement-spec | 外部 skill | [Matt Pocock skills](https://github.com/mattpocock/skills)；步骤适配 pc-0.2 | clarify / implement / 两轴评审 / research / 阶段边界 / 大任务拆分与实施 |
+| modern-web-guidance | 外部 skill | 来源待核实：本机副本无作者 / 许可元数据，形态属 Vercel 技能家族 | web |
+| vercel-react-best-practices | 外部 skill | Vercel（MIT，1.0.0） | react |
+| web-design-guidelines | 外部 skill | Vercel（1.0.0） | UI 审计，按需 |
+| frontend-design | 外部 skill | Anthropic claude-plugins-official frontend-design 插件 | visual-direction |
+| emil-design-eng | 外部 skill | 内容编码 Emil Kowalski 设计工程理念；打包者待核实 | 新 UI 方向打磨，按需 |
+| ui-taste-loop | 外部 skill | [自维护外部仓](https://github.com/shanyuhai007-netizen/ui-taste-loop)；适配 pc-visual-1，见 [视觉适配](VISUAL.md)，当前效果仍需真实 UI 票验证 | visual-direction / visual-review |
+| fact-review（独立事实核验） | 内部程序 | WORKFLOW「完成条件先于实施」一节 + EXECUTION 独立回执（`--independent`）；不引用外部组件 | fact-review |
+
+「来源待核实」指本机副本缺少可验证的作者 / 许可元数据；按事实缺口处理，不以推测填登记，补证后更新本表。
+
+## 设计参考致谢
+
 - [poteto verification-skill-example](https://github.com/poteto/verification-skill-example)：项目级产物验收与 feature map 的设计参考。
-- [pstack](https://github.com/cursor/plugins/tree/main/pstack)：持续执行和可复核交付的设计参考。
+- [pstack](https://cursor/plugins/tree/main/pstack)：持续执行和可复核交付的设计参考。
 - [Agent Skills specification](https://agentskills.io/specification)：SKILL.md 结构参考。
 
-这些组件均为可选外部依赖，各自许可独立。本仓库不自动下载或覆盖它们；安装缺失组件前核查其来源、许可与当前客户端支持。上游步骤的具体适配统一见 ADAPTERS.md。
+## 项目级清单
 
 组件清单由每个项目按实际环境生成，记录真实源路径、内容 hash、版本（已知时）、读取 / 原生接口、适配版本。source hash 只锁定捕获的文件；读取其他参考文件时通过 component 的 `--file` 一起封存。不要用一个入口版本号推断全部跨客户端组件相同。
-
-- [ui-taste-loop](https://github.com/shanyuhai007-netizen/ui-taste-loop)：外部视觉专项流程；与 frontend-design 协作，接入差异见 [视觉适配](VISUAL.md)。当前效果仍需真实 UI 票验证。

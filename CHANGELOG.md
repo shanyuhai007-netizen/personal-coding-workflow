@@ -1,5 +1,10 @@
 # 版本记录
 
+## 0.4.3 — 2026-11-19
+
+- fact-review 改为内部程序：`independent-fact-review` 组件槽位移除——该名称不存在任何上游 skill，原规则下 formal_decision 任务的必需阶段永远无法满足。独立事实核验沿用 WORKFLOW「完成条件先于实施」与 EXECUTION 独立回执（`--independent`），走 output 义务。规则 hash 变化，在途任务需新计划显式复用。
+- COMPONENTS.md 升级为全量组件清单：17 个外部组件逐项登记性质、来源、适配与引用位置，modern-web-guidance、emil-design-eng 标记来源待核实（本机副本无作者元数据，不以推测填登记）。ROUTING 与 SKILL 入口补清单指针，缺组件先查清单再查已装技能；README 对应行更新。
+
 ## 0.4.2 — 2026-11-19
 
 - 修正 README 与 COMPATIBILITY 中滞留的 0.3.0 散文版本号；版本声明只保留 VERSION 与 CHANGELOG 两处权威，散文一律随发版刷新。
