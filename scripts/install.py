@@ -5,8 +5,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import tempfile
-import uuid
 
 FILES = (
     'VERSION', 'SKILL.md', 'WORKFLOW.md', 'ADAPTERS.md', 'README.md',
@@ -64,24 +64,61 @@ def journal_path(destination):
     return destination.parent / ('.' + destination.name + '.transaction.json')
 
 
+def state_root():
+    override = os.environ.get('PERSONAL_CODING_STATE_ROOT')
+    if override:
+        return Path(override)
+    return Path.home() / '.local' / 'state' / 'personal-coding'
+
+
+def backups_root(destination):
+    scope = destination.parent.parent.name.lstrip('.') or 'root'
+    return state_root() / 'backups' / scope / destination.name
+
+
+def resolve_backup(destination, value):
+    """Accept the current absolute state-directory path or a legacy in-place name."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError('Invalid transaction path')
+    if Path(value).is_absolute():
+        path = Path(value)
+        if path.parent != backups_root(destination) or path.name in ('', '.', '..'):
+            raise ValueError('Invalid transaction path')
+        return path
+    if Path(value).name != value or not value.startswith('.' + destination.name + '.previous-'):
+        raise ValueError('Invalid transaction path')
+    return destination.parent / value
+
+
+def prune_backups(destination, keep):
+    root = backups_root(destination)
+    if not root.is_dir():
+        return
+    for child in root.iterdir():
+        if child != keep:
+            shutil.rmtree(child, ignore_errors=True)
+
+
 def recover(destination):
-    """Resolve a prior directory switch. Preserve stages/backups for inspection."""
+    """Resolve a prior directory switch. Preserve stages for inspection."""
     journal = journal_path(destination)
     if not journal.exists():
         return
     if journal.is_symlink():
         raise ValueError('Refusing symlink transaction journal')
     state = json.loads(journal.read_text())
-    for key, prefix in [('backup', '.previous-'), ('stage', '.stage-')]:
-        name = state[key]
-        if Path(name).name != name or not name.startswith('.' + destination.name + prefix):
-            raise ValueError('Invalid transaction path')
-        if (destination.parent / name).is_symlink():
-            raise ValueError('Refusing symlink transaction directory')
-    backup = destination.parent / state['backup']
+    if Path(state['stage']).name != state['stage'] or not state['stage'].startswith('.' + destination.name + '.stage-'):
+        raise ValueError('Invalid transaction path')
+    if (destination.parent / state['stage']).is_symlink():
+        raise ValueError('Refusing symlink transaction directory')
+    backup = resolve_backup(destination, state.get('backup'))
+    if backup is not None and backup.is_symlink():
+        raise ValueError('Refusing symlink transaction directory')
     if destination.is_symlink():
         raise ValueError('Refusing symlink destination')
-    if not destination.exists() and backup.exists():
+    if not destination.exists() and backup is not None and backup.exists():
         os.replace(backup, destination)
     # Preserve local changes made during the interruption; normal install verifies them.
     if destination.exists():
@@ -123,18 +160,28 @@ def install(source, destination, check=False):
         raise ValueError('Not installed: ' + str(destination))
     destination.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix='.' + destination.name + '.stage-', dir=destination.parent))
-    backup = destination.parent / ('.' + destination.name + '.previous-' + uuid.uuid4().hex)
+    backup = None
+    if destination.exists():
+        label = old.get('version')
+        if not isinstance(label, str) or Path(label).name != label or label in ('', '.', '..'):
+            raise ValueError('Invalid version label for backup')
+        # Outside client skill scan paths; one retained copy, older versions live in git.
+        backup = backups_root(destination) / label
+        backup.parent.mkdir(parents=True, exist_ok=True)
     for name, data in payload.items():
         (stage / name).parent.mkdir(parents=True, exist_ok=True)
         replace_file(stage / name, data)
     replace_file(stage / MARKER, (json.dumps(desired, indent=2) + '\n').encode())
     verify(stage)
-    state = {'stage': stage.name, 'backup': backup.name, 'had_destination': destination.exists()}
+    state = {'stage': stage.name, 'backup': str(backup) if backup is not None else None,
+             'had_destination': destination.exists()}
     replace_file(journal_path(destination), (json.dumps(state) + '\n').encode())
-    if destination.exists():
+    if backup is not None:
         os.replace(destination, backup)
     os.replace(stage, destination)
     journal_path(destination).unlink()
+    if backup is not None:
+        prune_backups(destination, backup)
     return 'INSTALLED ' + version + ' ' + str(destination)
 
 

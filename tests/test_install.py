@@ -26,6 +26,9 @@ class WorkflowInstallTests(unittest.TestCase):
         os.environ['PERSONAL_CODING_ALLOW_VOLATILE_RECORD'] = '1'
         self.addCleanup(os.environ.pop, 'PERSONAL_CODING_ALLOW_VOLATILE_RECORD', None)
         self.root = Path(self.temp.name)
+        # Upgrade backups must never land in the skill scan path; keep them in the sandbox too.
+        os.environ['PERSONAL_CODING_STATE_ROOT'] = str(self.root / 'state')
+        self.addCleanup(os.environ.pop, 'PERSONAL_CODING_STATE_ROOT', None)
         self.source, self.dest = self.root / "source", self.root / "installed"
         self.source.mkdir()
         for name in installer.FILES:
@@ -90,6 +93,20 @@ class WorkflowInstallTests(unittest.TestCase):
         self.assertEqual((self.dest / "WORKFLOW.md").read_text(), "new behavior\n")
         self.assertEqual(backup.read_text(), "original\n")
 
+    def test_upgrade_backups_stay_outside_the_skill_scan_path(self):
+        installer.install(self.source, self.dest)
+        (self.source / 'VERSION').write_text('0.1.1\n')
+        (self.source / 'WORKFLOW.md').write_text('second\n')
+        installer.install(self.source, self.dest)
+        (self.source / 'VERSION').write_text('0.1.2\n')
+        (self.source / 'WORKFLOW.md').write_text('third\n')
+        installer.install(self.source, self.dest)
+        strays = [p.name for p in self.dest.parent.iterdir() if p.name.startswith('.')]
+        self.assertEqual(strays, [])
+        retained = sorted(installer.backups_root(self.dest).iterdir())
+        self.assertEqual([p.name for p in retained], ['0.1.1'])
+        self.assertEqual((retained[0] / 'WORKFLOW.md').read_text(), 'second\n')
+
     def test_interrupted_switch_is_recoverable_without_mixing_files(self):
         installer.install(self.source, self.dest)
         (self.source / 'VERSION').write_text('0.2.0\n')
@@ -107,8 +124,9 @@ class WorkflowInstallTests(unittest.TestCase):
         installer.install(self.source, self.dest)
         self.assertEqual((self.dest / 'WORKFLOW.md').read_text(), 'new\n')
         self.assertTrue(installer.install(self.source, self.dest, check=True).startswith('CURRENT'))
-        backups = list(self.root.glob('.installed.previous-*'))
-        self.assertTrue(any((p / 'WORKFLOW.md').read_text() == 'original\n' for p in backups))
+        self.assertFalse(list(self.root.glob('.installed.previous-*')))
+        backup = installer.backups_root(self.dest) / '0.1.0'
+        self.assertEqual((backup / 'WORKFLOW.md').read_text(), 'original\n')
 
     def test_recovery_check_is_readonly_and_preserves_later_edits(self):
         installer.install(self.source, self.dest)
@@ -126,7 +144,7 @@ class WorkflowInstallTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Pending transaction'):
             installer.install(self.source, self.dest, check=True)
         self.assertFalse(self.dest.exists())
-        backup = next(self.root.glob('.installed.previous-*'))
+        backup = installer.backups_root(self.dest) / '0.1.0'
         (backup / 'WORKFLOW.md').write_text('preserved user edit\n')
         with self.assertRaisesRegex(ValueError, 'Local modification'):
             installer.install(self.source, self.dest)
