@@ -1,5 +1,9 @@
 # 版本记录
 
+## 0.4.5 — 2026-11-19
+
+- COMPONENTS.md 两组件补证完成：modern-web-guidance 为 Google Chrome 团队 npm 包（Apache-2.0，源码仓 GoogleChrome/modern-web-guidance-src），原「Vercel 技能家族」推测不成立已纠正；emil-design-eng 打包者为 Emil Kowalski 作者官方仓 emilkowalski/skills（MIT），本机副本为早期快照已注明。「来源待核实」标记全部清除，登记脚注改为补证口径（npm registry 元数据 + GitHub license，2026-11-19）。安装副本内容变化，递增补丁版重装三份。
+
 ## 0.4.4 — 2026-11-19
 
 - 仓库规整审计：无孤儿文件与结构冗余（引用图连通、3649 行全部有职责）；按两处权威规则清除滞留散文版本声明（WORKFLOW 标题、README 两处、COMPATIBILITY 两处），README 版本口径改为指向 VERSION 与 CHANGELOG。.gitignore 补 .DS_Store。本地杂物（.DS_Store、__pycache__）已清理。安装副本内容变化触发版本漂移保护，按 0.2.1 先例递增补丁版重装。
