@@ -1,6 +1,6 @@
 # personal-coding-workflow
 
-让编码 Agent 接续任务、选用专业 skill、验证实际产物，并留下可复核证据的个人工作流。中文优先，跨 Codex / Claude Code / ZCode 使用普通 Markdown。本地实验候选版本 **0.4.2**，行为验收尚未完成；含可选任务阶段守卫与ZCode hook适配。ZCode隔离试点使用模拟provider，不证明真实模型路由或恢复能力；hooks需显式配置。
+让编码 Agent 接续任务、选用专业 skill、验证实际产物，并留下可复核证据的个人工作流。中文优先，跨 Codex / Claude Code / ZCode 使用普通 Markdown。本地实验候选，行为验收尚未完成；含可选任务阶段守卫与ZCode hook适配。ZCode隔离试点使用模拟provider，不证明真实模型路由或恢复能力；hooks需显式配置。当前版本见 [VERSION](VERSION) 与 [CHANGELOG](CHANGELOG.md)。
 
 目标是让 Agent 连续完成已授权工作：查证技术事实、复用已有决定和权限，只在缺少必要业务事实、偏好、凭据或授权时请人参与。小改走短路径，跨会话任务才写 spec / 依赖图。
 
@@ -58,4 +58,4 @@ python3 -m unittest discover -s tests -v
 
 ## 视觉专项
 
-0.4.0 本地候选将 ui-taste-loop 接入视觉生成/改版阶段：已有方向复用、纯样式独立实现、最终截图独立评审，具体协议见 [VISUAL](docs/VISUAL.md)。上游 skill 单独提供，本包不自动安装；缺必需能力不能报完成。合成路由测试不证明审美效果，首次真实 UI 票仍需验证。
+ui-taste-loop 接入视觉生成/改版阶段：已有方向复用、纯样式独立实现、最终截图独立评审，具体协议见 [VISUAL](docs/VISUAL.md)。上游 skill 单独提供，本包不自动安装；缺必需能力不能报完成。合成路由测试不证明审美效果，首次真实 UI 票仍需验证。
