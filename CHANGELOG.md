@@ -1,10 +1,13 @@
 # 版本记录
 
+## 0.4.4 — 2026-11-19
+
+- 仓库规整审计：无孤儿文件与结构冗余（引用图连通、3649 行全部有职责）；按两处权威规则清除滞留散文版本声明（WORKFLOW 标题、README 两处、COMPATIBILITY 两处），README 版本口径改为指向 VERSION 与 CHANGELOG。.gitignore 补 .DS_Store。本地杂物（.DS_Store、__pycache__）已清理。安装副本内容变化触发版本漂移保护，按 0.2.1 先例递增补丁版重装。
+
 ## 0.4.3 — 2026-11-19
 
 - fact-review 改为内部程序：`independent-fact-review` 组件槽位移除——该名称不存在任何上游 skill，原规则下 formal_decision 任务的必需阶段永远无法满足。独立事实核验沿用 WORKFLOW「完成条件先于实施」与 EXECUTION 独立回执（`--independent`），走 output 义务。规则 hash 变化，在途任务需新计划显式复用。
 - COMPONENTS.md 升级为全量组件清单：17 个外部组件逐项登记性质、来源、适配与引用位置，modern-web-guidance、emil-design-eng 标记来源待核实（本机副本无作者元数据，不以推测填登记）。ROUTING 与 SKILL 入口补清单指针，缺组件先查清单再查已装技能；README 对应行更新。
-- 按两处权威规则清除滞留散文版本声明（WORKFLOW 标题、README、COMPATIBILITY 两处）；.gitignore 补 .DS_Store。
 
 ## 0.4.2 — 2026-11-19
 
