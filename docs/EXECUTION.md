@@ -33,6 +33,8 @@ python3 scripts/evidence.py next /evidence/task.json --json
 
 显示目标、修订号、阶段、所需组件、出口和状态；详细身份留JSON。next选择依赖齐备的首项；必要业务澄清不阻塞独立research。多单元的真实票依赖图留spec，工具不调度独立票组。已有实现仍先核验，适用时用reuse满足对应阶段，不能重新施工。预算耗尽保持受阻，继续其他已就绪项。修复根因并保留证明后，可用 `stage-resume --stage <id> --reason <具体修复> --proof <复验依据>` 开启唯一一次新的有限重试周期；旧失败次数保留在attempt_history。再次耗尽后需新任务及重新审查范围，不可继续清零重试。
 
+台账与证据目录放在仓外的持久位置：系统临时目录（/tmp、$TMPDIR 等）会被定期清理，`plan` 与 `finish` 拒绝此类路径；项目同级 `.personal-coding-evidence/` 或 `~/.local/state/personal-coding/<repo>/<task>/` 是可用约定。合成测试以 `PERSONAL_CODING_ALLOW_VOLATILE_RECORD=1` 显式豁免。
+
 ## 记录执行与阶段出口
 
 先执行阶段方法并核验产物。组件事件采用JSON：`task_id, stage_id, component, source, mode, status`；status只能成功事件才用success。宿主观察器生成的事件还保存session/tool身份、原始载荷指针。手工整理的read事件必须注明其声明性质，不能称宿主自动观察。native/read事件检查任务、阶段、组件、模式及规范源路径；这些字段仍不是防伪签名。
@@ -43,7 +45,7 @@ python3 scripts/evidence.py stage-receipt /evidence/task.json --stage implement 
 python3 scripts/evidence.py stage-complete /evidence/task.json --stage implement --receipt /evidence/implement-1.json
 ```
 
-每项所需组件先登记事件，再提交一份receipt；无专业组件用 obligation `output`。native只能来自宿主事件；read/reuse手工事件标为agent声明并关联执行核验文件。事件必须登记于当前任务且与任务、阶段、组件、模式、规范源路径/hash相符。ZCode开始观察后，手工事件不能替代宿主事件。证明文件和receipt仍是调用者声明，不能证明思考质量。输入选择与结论有关文件；最终 verify、两轴评审及close自动绑定完整Git树。实现阶段选有关文件，后续无关改动不会让历史事实永久失效。每次next/完成/finish重新核验输入、源、产物、事件hash和前置条件。变化使相关项及依赖返回待验证；旧回执保留。
+每项所需组件先登记事件，再提交一份receipt；无专业组件用 obligation `output`，此时不需要事件文件。`--event` 可省略：省略时组件义务自动选用本任务最新登记的同阶段、同组件、同 mode 成功事件；显式传入时必须是 component-event 产出的 JSON。native只能来自宿主事件；read/reuse手工事件标为agent声明并关联执行核验文件。事件必须登记于当前任务且与任务、阶段、组件、模式、规范源路径/hash相符。ZCode开始观察后，手工事件不能替代宿主事件。证明文件和receipt仍是调用者声明，不能证明思考质量。输入选择与结论有关文件；最终 verify、两轴评审及close自动绑定完整Git树。实现阶段选有关文件，后续无关改动不会让历史事实永久失效。早期组件回执（diagnose/web/react 等）按当时相关文件绑定：实现落地改变相关文件后回折待验证，实现后预期重开一次（2026-11-18 三任务均如此，约 15 分钟/次的已知成本，排期按此计）。每次next/完成/finish重新核验输入、源、产物、事件hash和前置条件。变化使相关项及依赖返回待验证；旧回执保留。
 
 verify receipt另外必须提供至少一个 `--check /evidence/check/result.json`，来自 [run工具](TOOLS.md#可靠检查)，当前树、原退出码及日志hash均核验。实际产品路径、服务环境和模型质量仍需对应产物，空泛pass声明不能替代它们。独立阶段加 `--independent --reviewer-id <独立上下文ID>`，Standards与Spec必须不同上下文；字段是声明，独立性还须回查原始执行记录。
 

@@ -48,6 +48,15 @@ def outside_repo(repo, out):
     return root
 
 
+def volatile(path):
+    """Temp directories are periodically purged; durable records cannot live there."""
+    if os.environ.get('PERSONAL_CODING_ALLOW_VOLATILE_RECORD') == '1':
+        return False
+    resolved = Path(path).resolve()
+    roots = {Path('/tmp').resolve(), Path('/var/tmp').resolve(), Path(tempfile.gettempdir()).resolve()}
+    return any(root == resolved or root in resolved.parents for root in roots)
+
+
 def snapshot(repo, base, out):
     repo = outside_repo(repo, out)
     base = git(repo, 'rev-parse', '--verify', base + '^{commit}')

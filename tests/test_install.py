@@ -22,6 +22,9 @@ class WorkflowInstallTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
+        # The installed-copy acceptance test plans records under this temp sandbox.
+        os.environ['PERSONAL_CODING_ALLOW_VOLATILE_RECORD'] = '1'
+        self.addCleanup(os.environ.pop, 'PERSONAL_CODING_ALLOW_VOLATILE_RECORD', None)
         self.root = Path(self.temp.name)
         self.source, self.dest = self.root / "source", self.root / "installed"
         self.source.mkdir()

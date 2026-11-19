@@ -1,5 +1,12 @@
 # 版本记录
 
+## 0.4.1 — 2026-11-19
+
+- `plan` 与 `finish` 拒绝系统临时目录（/tmp、$TMPDIR 等）作为台账位置；EXECUTION.md 写明持久目录约定，合成测试用 `PERSONAL_CODING_ALLOW_VOLATILE_RECORD=1` 豁免。来自真实会话评审：VERIFIED 任务的证据链曾整体落在待清理的 /tmp。
+- `stage-receipt` 的 `--event` 改为可选：组件义务省略时自动匹配本任务最新登记的同阶段/组件/mode 成功事件；`output` 义务（无专业组件，如 close/verify）不再需要事件文件。修复收口必须手写事件 JSON 的断点，并消除挑错事件文件烧 attempts 的簿记失误（实测两台账 13 次 attempt 失败全部属此类）。
+- 回灌 0.4.0 安装副本的 drifted 补丁：早期组件回执回折成本的说明、显式 `--event` 的 JSON 校验；三份安装副本统一为 0.4.1。
+- 新增 3 项回归测试覆盖上述行为，合计 50 项在 Python 3.10+/本机通过。
+
 ## 0.4.0 — 本地候选
 
 - 新增 visual_change、方向/纯视觉实现/最终视觉评审阶段，支持已有实现补验。

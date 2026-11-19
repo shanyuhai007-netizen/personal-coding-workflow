@@ -108,6 +108,8 @@ def plan(args):
     if type(budget) is not int or budget < 1:
         raise ValueError('Positive max_attempts required')
     root = ev.outside_repo(args.repo, args.record)
+    if ev.volatile(args.record):
+        raise ValueError('Record location is periodically purged; keep task records in a durable directory outside the repository (docs/EXECUTION.md)')
     stages = compile_stages(facts, rules)
     conditions = ac.conditions(source, Path(args.facts).resolve().parent) if stages else []
     with locked(args.record) as path:
@@ -203,7 +205,10 @@ def verify_receipt(task, stage, receipt_path):
     if stage['id'] in ('standards', 'spec-review', 'close') and not {'conditions', 'acceptance'} <= receipt['input_identity'].keys():
         raise ValueError('Original conditions and acceptance identity required; recheck legacy review/closure')
     verify_identity(task, receipt['input_identity'])
-    for item in receipt['sources'] + receipt['artifacts'] + [receipt['observed_event_ref']]:
+    refs = receipt['sources'] + receipt['artifacts']
+    if receipt.get('observed_event_ref'):
+        refs.append(receipt['observed_event_ref'])
+    for item in refs:
         ev.verify_artifact(receipt_path.parent, item)
     if stage['id'] == 'verify' and not receipt.get('checks'):
         raise ValueError('Actual verification needs at least one captured check')
@@ -224,6 +229,8 @@ def verify_receipt(task, stage, receipt_path):
         if not expected or str(Path(expected).resolve()) not in actual:
             raise ValueError('Target component canonical source identity missing')
         if receipt['mode'] in ('native', 'read', 'reuse'):
+            if not receipt.get('observed_event_ref'):
+                raise ValueError('Component obligation requires an observed event; register one or recreate the receipt')
             event = read(ev.resolve_file(receipt_path.parent, receipt['observed_event_ref']['path']))
             event_path = str(ev.resolve_file(receipt_path.parent, receipt['observed_event_ref']['path']).resolve())
             if event_path not in {str(Path(value).resolve()) for value in task['events']}:
@@ -333,6 +340,9 @@ def operate(args):
             print(json.dumps(stage, ensure_ascii=False) if args.json else view(task))
             return 0
         if args.command == 'finish':
+            if ev.volatile(path):
+                save(path, task)
+                raise ValueError('Record location is periodically purged; VERIFIED evidence would not persist')
             missing = (ac.problems(task) if task['stages'] else []) + ['operation ' + k + ' remains unknown; reconcile before retry' for k, v in task.get('operations', {}).items() if v['status'] == 'unknown'] + [p for s in task['stages'] for p in problems(task, s)]
             if missing:
                 save(path, task)
@@ -376,16 +386,43 @@ def operate(args):
         return 0
 
 
+def latest_event(task, stage, obligation, mode):
+    """Newest registered success event matching this receipt; events are append-ordered."""
+    match = None
+    for value in task['events']:
+        try:
+            event = read(value)
+        except (OSError, ValueError):
+            continue
+        if (event.get('task_id'), event.get('stage_id'), event.get('component'),
+                event.get('mode'), event.get('status')) == (task['task_id'], stage['id'], obligation, mode, 'success'):
+            match = ev.artifact(value)
+    return match
+
+
 def receipt(args):
     task = load(args.record)
     stage = stage_by_id(task, args.stage)
     out = Path(args.out).resolve()
     ev.outside_repo(task['repo'], out)
+    event_ref = None
+    if args.event:
+        event_ref = ev.artifact(args.event)
+        if args.obligation != 'output':
+            try:
+                json.loads(Path(args.event).resolve().read_text())
+            except ValueError:
+                raise ValueError('component 阶段的 --event 必须是 component-event 产出的 JSON 文件')
+    elif args.obligation != 'output':
+        event_ref = latest_event(task, stage, args.obligation, args.mode)
+        if event_ref is None:
+            raise ValueError('No registered success event for obligation ' + args.obligation + ' on stage ' +
+                             stage['id'] + ' mode ' + args.mode + '; run component-event first or pass --event')
     data = {'task_id': task['task_id'], 'stage_id': stage['id'], 'obligation_id': args.obligation,
             'mode': args.mode, 'verification': args.verification, 'adaptation': args.adaptation,
             'input_identity': identity(task, stage, args.input), 'sources': [ev.artifact(p) for p in args.source],
             'checks': [ev.artifact(p) for p in args.check],
-            'observed_event_ref': ev.artifact(args.event), 'artifacts': [ev.artifact(p) for p in args.artifact],
+            'observed_event_ref': event_ref, 'artifacts': [ev.artifact(p) for p in args.artifact],
             'independent': args.independent, 'reviewer_id': args.reviewer_id,
             'attestation': 'caller-declared; source/event hashes do not prove method quality'}
     if args.reuse_check:
@@ -519,8 +556,9 @@ def add_parsers(sub):
             p.add_argument('--receipt', action='append', required=True)
     p = sub.add_parser('stage-receipt')
     p.add_argument('record')
-    for name in ('stage', 'obligation', 'out', 'event', 'adaptation'):
+    for name in ('stage', 'obligation', 'out', 'adaptation'):
         p.add_argument('--' + name, required=True)
+    p.add_argument('--event', default='', help='Optional; auto-matches the latest registered success event when omitted')
     p.add_argument('--mode', choices=['native', 'read', 'reuse', 'degraded'], required=True)
     p.add_argument('--verification', choices=['pass', 'fail', 'unknown'], required=True)
     for name in ('input', 'source', 'artifact', 'check'):

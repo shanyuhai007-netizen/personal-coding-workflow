@@ -1,6 +1,7 @@
 """Contract tests through the installed public CLI, with synthetic repositories."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -14,6 +15,9 @@ class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
+        # Synthetic fixtures live under temp dirs; the production guard stays covered below.
+        os.environ['PERSONAL_CODING_ALLOW_VOLATILE_RECORD'] = '1'
+        self.addCleanup(os.environ.pop, 'PERSONAL_CODING_ALLOW_VOLATILE_RECORD', None)
         self.root = Path(self.temp.name)
         self.repo = self.root / 'repo'
         self.repo.mkdir()
@@ -419,6 +423,69 @@ class WorkflowTests(unittest.TestCase):
                             if s['status'] == 'passed'))
         self.assertEqual(json.loads(self.cli('next', self.record, '--json').stdout)['id'], 'preflight')
         self.assertEqual(len(self.state()['revisions']), 2)
+
+    def cli_env(self, env, *args):
+        return subprocess.run([sys.executable, str(SCRIPT), *map(str, args)], cwd=self.repo,
+                              capture_output=True, text=True, env=env)
+
+    def test_purged_record_locations_are_refused_at_plan_and_finish(self):
+        purged = {key: value for key, value in os.environ.items()
+                  if key != 'PERSONAL_CODING_ALLOW_VOLATILE_RECORD'}
+        path = self.root / 'facts.json'
+        path.write_text(json.dumps({'task_id': 'fixture-task', 'goal': 'Exercise public contract',
+                                    'facts': {'intent': {'value': 'implement', 'evidence': 'synthetic'}},
+                                    'conditions': [], 'max_attempts': 1}))
+        result = self.cli_env(purged, 'plan', '--facts', path, '--record', self.record)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('purged', result.stderr)
+        self.assertFalse(self.record.exists())
+        self.assertEqual(self.plan().returncode, 0)
+        result = self.cli_env(purged, 'finish', self.record)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('purged', result.stderr)
+        self.assertNotEqual(self.state()['status'], 'VERIFIED')
+
+    def test_output_obligation_receipts_no_longer_need_event_files(self):
+        self.assertEqual(self.plan().returncode, 0)
+        proof = self.root / 'proof.md'
+        proof.write_text('Synthetic stage completed without any hand-written event JSON.\n')
+        out = self.root / 'preflight-no-event.json'
+        result = self.cli('stage-receipt', self.record, '--stage', 'preflight', '--obligation', 'output',
+                          '--mode', 'read', '--verification', 'pass', '--adaptation', 'synthetic pc contract',
+                          '--artifact', proof, '--input', self.root / 'facts.json', '--out', out)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(json.loads(out.read_text())['observed_event_ref'])
+        self.assertEqual(self.cli('stage-complete', self.record, '--stage', 'preflight',
+                                  '--receipt', out).returncode, 0)
+
+    def test_component_receipts_auto_match_the_latest_registered_event(self):
+        self.assertEqual(self.plan(behavior_change=True).returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        # Dedicated files: overwriting a hash-bound artifact of a passed stage would
+        # invalidate it, which is exactly the guard tested elsewhere.
+        proof = self.root / 'red-green.md'
+        proof.write_text('Synthetic red-green execution trace.\n')
+        source = self.root / 'tdd.md'
+        source.write_text('Synthetic tdd source.\n')
+        self.assertEqual(self.cli('component-event', self.record, '--stage', 'implement', '--obligation', 'tdd',
+                                  '--mode', 'read', '--source', source, '--proof', proof,
+                                  '--status', 'success').returncode, 0)
+        out = self.root / 'implement-auto.json'
+        result = self.cli('stage-receipt', self.record, '--stage', 'implement', '--obligation', 'tdd',
+                          '--mode', 'read', '--verification', 'pass', '--adaptation', 'synthetic pc contract',
+                          '--source', source, '--artifact', proof, '--input', self.repo / 'app.txt', '--out', out)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        event = json.loads(Path(json.loads(out.read_text())['observed_event_ref']['path']).read_text())
+        self.assertEqual(event['component'], 'tdd')
+        self.assertEqual(event['stage_id'], 'implement')
+        self.assertEqual(self.cli('stage-complete', self.record, '--stage', 'implement',
+                                  '--receipt', out).returncode, 0)
+        missing = self.cli('stage-receipt', self.record, '--stage', 'verify', '--obligation', 'tdd',
+                           '--mode', 'read', '--verification', 'pass', '--adaptation', 'synthetic pc contract',
+                           '--source', source, '--artifact', proof, '--input', self.repo / 'app.txt',
+                           '--out', self.root / 'no-event.json')
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn('No registered success event', missing.stderr)
 
 
 if __name__ == '__main__':
