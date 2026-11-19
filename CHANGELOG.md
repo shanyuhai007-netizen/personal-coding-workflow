@@ -1,5 +1,9 @@
 # 版本记录
 
+## 0.4.7 — 2026-11-19
+
+- 清单校验测试加双向相等断言：解析 COMPONENTS.md 外部 skill 行的名字集合，与测试词表强制相等——登记与词表漏改任一侧即红，消除 0.4.6 引入的双处人工同步点。测试变更本身不涉及安装内容，按惯例递增补丁版保持三副本与源一致。
+
 ## 0.4.6 — 2026-11-19
 
 - COMPONENTS.md 补登记 docs/agents/ 配置引用的 5 个 Matt Pocock skill（triage、wayfinder、domain-modeling、grill-with-docs、improve-codebase-architecture），登记范围与 tracked 文档引用范围对齐，消除清单「全部组件逐项登记」承诺下的事实缺口。新增 tests/test_components_manifest.py 机械校验（外部 skill 词表与反引号 slash 调用均须 ⊆ 清单），防止引用漂移再漏登记。安装副本内容变化，递增补丁版重装三份。

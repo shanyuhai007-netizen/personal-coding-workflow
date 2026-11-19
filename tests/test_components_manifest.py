@@ -6,7 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / 'docs' / 'COMPONENTS.md'
 
-# 外部 skill 词表，与 docs/COMPONENTS.md 清单同步维护；新增登记时同步此表。
+# 外部 skill 词表；与 docs/COMPONENTS.md 清单双向相等由
+# test_manifest_vocabulary_matches_table 强制，漏改任一侧都会失败。
 EXTERNAL_SKILLS = (
     'grilling', 'tdd', 'code-review', 'diagnosing-bugs', 'research', 'retro',
     'handoff', 'to-spec', 'to-tickets', 'implement', 'implement-spec',
@@ -25,10 +26,31 @@ def markdown_files():
 
 
 class ManifestTests(unittest.TestCase):
+    def registered_external_skills(self):
+        """Parse 外部 skill rows of the manifest table into a name set."""
+        names = set()
+        for line in MANIFEST.read_text(encoding='utf-8').splitlines():
+            if not line.startswith('|'):
+                continue
+            cells = [c.strip() for c in line.strip().strip('|').split('|')]
+            if len(cells) >= 2 and cells[1] == '外部 skill':
+                names.update(part.strip() for part in cells[0].split('、') if part.strip())
+        return names
+
     def test_manifest_registers_every_external_skill(self):
         manifest = MANIFEST.read_text(encoding='utf-8')
         missing = [name for name in EXTERNAL_SKILLS if name not in manifest]
         self.assertEqual(missing, [])
+
+    def test_manifest_vocabulary_matches_table(self):
+        table = self.registered_external_skills()
+        vocabulary = set(EXTERNAL_SKILLS)
+        self.assertEqual(
+            vocabulary - table, set(),
+            'names in test vocabulary but not in manifest table')
+        self.assertEqual(
+            table - vocabulary, set(),
+            'names in manifest table but not in test vocabulary')
 
     def test_slash_invocations_in_docs_are_registered(self):
         manifest = MANIFEST.read_text(encoding='utf-8')
