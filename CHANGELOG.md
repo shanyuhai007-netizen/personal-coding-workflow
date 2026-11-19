@@ -1,5 +1,9 @@
 # 版本记录
 
+## 0.4.2 — 2026-11-19
+
+- 修正 README 与 COMPATIBILITY 中滞留的 0.3.0 散文版本号；版本声明只保留 VERSION 与 CHANGELOG 两处权威，散文一律随发版刷新。
+
 ## 0.4.1 — 2026-11-19
 
 - `plan` 与 `finish` 拒绝系统临时目录（/tmp、$TMPDIR 等）作为台账位置；EXECUTION.md 写明持久目录约定，合成测试用 `PERSONAL_CODING_ALLOW_VOLATILE_RECORD=1` 豁免。来自真实会话评审：VERIFIED 任务的证据链曾整体落在待清理的 /tmp。
