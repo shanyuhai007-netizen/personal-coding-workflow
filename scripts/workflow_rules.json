@@ -123,9 +123,7 @@
         ],
         "design_nontrivial": true
       },
-      "components": [
-        "independent-fact-review"
-      ],
+      "components": [],
       "independent": true,
       "done_when": "从原始材料独立核验关键事实、语义和推论",
       "after": [

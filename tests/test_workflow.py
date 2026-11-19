@@ -43,7 +43,7 @@ class WorkflowTests(unittest.TestCase):
         facts.update({k: {'value': v, 'evidence': 'synthetic fixture contract'} for k, v in features.items()})
         path = self.root / 'facts.json'
         sources = {}
-        for name in ('tdd', 'code-review', 'grilling', 'research', 'diagnosing-bugs', 'independent-fact-review', 'modern-web-guidance', 'vercel-react-best-practices', 'ui-taste-loop', 'frontend-design'):
+        for name in ('tdd', 'code-review', 'grilling', 'research', 'diagnosing-bugs', 'modern-web-guidance', 'vercel-react-best-practices', 'ui-taste-loop', 'frontend-design'):
             source = self.root / (name + '.md')
             source.write_text('Synthetic ' + name + ' source.\n')
             sources[name] = str(source)
@@ -418,6 +418,8 @@ class WorkflowTests(unittest.TestCase):
                           '--reason', 'New ADR scope from user')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('fact-review', [s['id'] for s in self.state()['stages']])
+        # Independent fact verification is an internal procedure, not an external skill slot.
+        self.assertEqual({s['id']: s for s in self.state()['stages']}['fact-review']['components'], [])
         self.assertIn('document', [s['id'] for s in self.state()['stages']])
         self.assertTrue(all(s['status'] == 'needs_verification' for s in self.state()['stages']
                             if s['status'] == 'passed'))
