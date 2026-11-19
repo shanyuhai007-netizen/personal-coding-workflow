@@ -8,7 +8,7 @@
 
 | 组件 | 性质 | 来源 | 引用位置 |
 |---|---|---|---|
-| grilling、tdd、code-review、diagnosing-bugs、research、retro、handoff、to-spec、to-tickets、implement、implement-spec | 外部 skill | [Matt Pocock skills](https://github.com/mattpocock/skills)；步骤适配 pc-0.2 | clarify / implement / 两轴评审 / research / 阶段边界 / 大任务拆分与实施 |
+| grilling、tdd、code-review、diagnosing-bugs、research、retro、handoff、to-spec、to-tickets、implement、implement-spec、triage、wayfinder、domain-modeling、grill-with-docs、improve-codebase-architecture | 外部 skill | [Matt Pocock skills](https://github.com/mattpocock/skills)；步骤适配 pc-0.2 | clarify / implement / 两轴评审 / research / 阶段边界 / 大任务拆分与实施 / issue 分诊与决策地图、域语言与 ADR（[docs/agents](agents/) 配置） |
 | modern-web-guidance | 外部 skill | Google Chrome 团队（npm 包 modern-web-guidance，Apache-2.0；源码仓 [GoogleChrome/modern-web-guidance-src](https://github.com/GoogleChrome/modern-web-guidance-src)） | web |
 | vercel-react-best-practices | 外部 skill | Vercel（MIT，1.0.0） | react |
 | web-design-guidelines | 外部 skill | Vercel（1.0.0） | UI 审计，按需 |

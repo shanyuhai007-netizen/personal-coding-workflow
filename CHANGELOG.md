@@ -1,5 +1,9 @@
 # 版本记录
 
+## 0.4.6 — 2026-11-19
+
+- COMPONENTS.md 补登记 docs/agents/ 配置引用的 5 个 Matt Pocock skill（triage、wayfinder、domain-modeling、grill-with-docs、improve-codebase-architecture），登记范围与 tracked 文档引用范围对齐，消除清单「全部组件逐项登记」承诺下的事实缺口。新增 tests/test_components_manifest.py 机械校验（外部 skill 词表与反引号 slash 调用均须 ⊆ 清单），防止引用漂移再漏登记。安装副本内容变化，递增补丁版重装三份。
+
 ## 0.4.5 — 2026-11-19
 
 - COMPONENTS.md 两组件补证完成：modern-web-guidance 为 Google Chrome 团队 npm 包（Apache-2.0，源码仓 GoogleChrome/modern-web-guidance-src），原「Vercel 技能家族」推测不成立已纠正；emil-design-eng 打包者为 Emil Kowalski 作者官方仓 emilkowalski/skills（MIT），本机副本为早期快照已注明。「来源待核实」标记全部清除，登记脚注改为补证口径（npm registry 元数据 + GitHub license，2026-11-19）。安装副本内容变化，递增补丁版重装三份。
