@@ -268,6 +268,102 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('failed.log', result.stdout)
         self.assertIn('Fix error 7', self.cli('finish', self.record).stderr)
 
+    def numbers_report(self, numbers, log, status='pass'):
+        raw = self.root / 'observation.txt'
+        raw.write_text('Observed fixture operation returns expected result locally.\n')
+        row = {'id': 'local', 'status': status, 'behavior': 'Run fixture checks',
+               'target': 'local fixture', 'observation': 'Sealed sample summarized',
+               'evidence': [str(raw)], 'numbers': numbers}
+        if status == 'unknown':
+            row['next_action'] = 'Recheck against the sealed sample'
+        report = self.root / ('acceptance-numbers-' + str(len(list(self.root.glob('acceptance-numbers-*.json')))) + '.json')
+        report.write_text(json.dumps([row]))
+        return self.cli('acceptance', self.record, '--report', report)
+
+    def complete_before_numbers(self):
+        self.assertEqual(self.plan().returncode, 0)
+        for stage in ('preflight', 'document', 'verify'):
+            self.assertEqual(self.complete(stage).returncode, 0)
+
+    def test_recomputable_number_claims_keep_observation_pass(self):
+        self.complete_before_numbers()
+        log = self.root / 'checks.log'
+        log.write_text('latency 2.9\nlatency 3.7\nlatency 4.1\n' + 'ok\n' * 21)
+        result = self.numbers_report([
+            {'claim': 3.7, 'source': 'checks.log', 'pattern': r'latency ([0-9.]+)', 'compute': 'median'},
+            {'claim': 21, 'source': 'checks.log', 'pattern': r'\bok\b', 'compute': 'count'},
+            {'claim': 87.5, 'kind': 'approx', 'tolerance': 0.1, 'source': 'checks.log',
+             'numerator': r'\bok\b', 'denominator': r'\bok\b|\blatency\b', 'compute': 'ratio', 'scale': 100},
+        ], log)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        observation = self.state()['acceptance']['observations'][0]
+        self.assertEqual(observation['status'], 'pass')
+        self.assertTrue(all(item['verdict'] for item in observation['numbers']))
+        self.assertEqual(self.complete('close').returncode, 0)
+        self.assertEqual(self.cli('finish', self.record).returncode, 0)
+        self.assertEqual(self.state()['status'], 'VERIFIED')
+
+    def test_number_claims_that_do_not_recompute_downgrade_to_unknown(self):
+        self.complete_before_numbers()
+        log = self.root / 'baseline.log'
+        log.write_text('sample 8.2\nsample 7.4\nsample 9.0\n')
+        result = self.numbers_report([
+            {'claim': 7.4, 'source': 'baseline.log', 'pattern': r'sample ([0-9.]+)', 'compute': 'median'},
+            {'claim': 76.4, 'kind': 'approx', 'tolerance': 0.5, 'source': 'baseline.log',
+             'numerator': r'sample 8', 'denominator': r'sample', 'compute': 'ratio', 'scale': 100},
+        ], log)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        observation = self.state()['acceptance']['observations'][0]
+        self.assertEqual(observation['status'], 'unknown')
+        self.assertIn('do not recompute', observation['next_action'])
+        self.assertEqual(self.complete('close').returncode, 0)
+        finish = self.cli('finish', self.record)
+        self.assertNotEqual(finish.returncode, 0)
+        self.assertIn('Number claims do not recompute', finish.stderr)
+        self.assertIn('Claimed 7.4 but recomputed 8.2', finish.stderr)
+        self.assertNotEqual(self.state()['status'], 'VERIFIED')
+        # A declared-unknown row keeps its own next_action; failed claims only add detail.
+        again = self.numbers_report([{'claim': 99, 'source': 'baseline.log', 'pattern': 'sample', 'compute': 'count'}],
+                                    log, status='unknown')
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertIn('Recheck against the sealed sample', self.cli('finish', self.record).stderr)
+
+    def test_number_claim_sources_remain_hash_bound_after_capture(self):
+        self.complete_before_numbers()
+        log = self.root / 'checks.log'
+        log.write_text('ok\n' * 21)
+        result = self.numbers_report(
+            [{'claim': 21, 'source': 'checks.log', 'pattern': r'\bok\b', 'compute': 'count'}], log)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.complete('close').returncode, 0)
+        self.assertEqual(self.cli('finish', self.record).returncode, 0)
+        # The number source is separate from the observation evidence list; tampering only it must still fail closure.
+        log.write_text('ok\n' * 20 + 'FAIL\n')
+        finish = self.cli('finish', self.record)
+        self.assertNotEqual(finish.returncode, 0)
+        self.assertIn('changed evidence', finish.stderr)
+
+    def test_malformed_number_claims_are_rejected(self):
+        self.assertEqual(self.plan().returncode, 0)
+        log = self.root / 'checks.log'
+        log.write_text('ok\n')
+        base = {'source': 'checks.log'}
+        cases = [
+            {'claim': 1, 'compute': 'median'},
+            {'claim': 1, 'pattern': 'ok', 'kind': 'approx'},
+            {'claim': 1, 'pattern': 'ok', 'tolerance': 0.5},
+            {'claim': 'three', 'pattern': 'ok'},
+            {'claim': 1, 'pattern': 'ok', 'compute': 'median', 'scale': 2},
+            {'claim': 1, 'pattern': 'ok', 'compute': 'ratio'},
+            {'claim': 1, 'pattern': 'ok', 'compute': 'wow'},
+            {'claim': 1, 'pattern': 'ok', 'kind': 'rough'},
+        ]
+        for numbers in cases + [[]]:
+            with self.subTest(numbers=numbers):
+                result = self.numbers_report({**base, **numbers} if isinstance(numbers, dict) else numbers, log)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('ERROR', result.stderr)
+
     def test_short_document_path_recovers_across_processes_and_finishes(self):
         self.assertEqual(self.plan().returncode, 0)
         self.assertEqual([s['id'] for s in self.state()['stages']],

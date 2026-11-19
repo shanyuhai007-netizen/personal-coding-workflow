@@ -71,9 +71,16 @@ python3 scripts/evidence.py finish /evidence/task.json
 [
   {"id": "empty-input", "status": "pass", "behavior": "在 CLI 输入空字符串",
    "target": "local CLI fixture", "observation": "返回约定错误，进程未抛异常",
-   "evidence": ["empty-input.log"]}
+   "evidence": ["empty-input.log"],
+   "numbers": [
+     {"claim": 21, "kind": "exact", "source": "empty-input.log", "pattern": "\\bok\\b", "compute": "count"},
+     {"claim": 95.2, "kind": "approx", "tolerance": 0.5, "source": "empty-input.log",
+      "numerator": "\\bok\\b", "denominator": "\\b(ok|FAIL|ERROR)\\b", "compute": "ratio", "scale": 100}
+   ]}
 ]
 ```
+
+观测引用的关键数字（测试计数、比例、中位数等交付物会转述的量）用 `numbers` 声明做机械重算：每项绑定封存源文件（通常是 [run工具](TOOLS.md#可靠检查) 的 output.log；路径相对报告解析，保存 hash）、提取正则（Python `re`，有捕获组时取第一组）与重算方式——`count`/`sum`/`mean`/`median`/`min`/`max` 对提取值计算，`ratio` 用 `numerator`+`denominator` 两个计数模式相除（可选 `scale`，如百分比 ×100）。两级判据防误报：`exact`（默认）按声明位数四舍五入后必须与重算值一致；`approx` 必须给出非负 `tolerance` 且重算值落在容差内。重算失败的观测降级为 `unknown`（对应条件回到未验），不新增硬阶段；源文件事后变化由 hash 校验拦截。声明由调用者撰写，工具只保证「该数字可从该封存样本重算」，单位、分桶与口径仍是评审义务。
 
 ```sh
 python3 scripts/evidence.py acceptance /evidence/task.json --report /evidence/observations-1.json
