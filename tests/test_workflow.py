@@ -836,6 +836,12 @@ class WorkflowTests(unittest.TestCase):
                 self.assertFalse(stage.get('costs'))
                 self.assertEqual(stage['attempts'], 0)
 
+    def assert_interrogate_optional_wiring(self, stage):
+        """Production-rule verify slot: interrogate is the sole component and it is optional."""
+        self.assertEqual(stage['components'], ['interrogate'])
+        self.assertEqual(stage['required_obligations'], [])
+        self.assertEqual(stage['optional_obligations'], ['interrogate'])
+
     def test_default_ruleset_keeps_components_required_except_verify(self):
         # The production rule set wires exactly one optional component (interrogate on
         # verify); every other stage keeps all components required, as before.
@@ -846,9 +852,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(stages)
         for stage in stages:
             if stage['id'] == 'verify':
-                self.assertEqual(stage['components'], ['interrogate'])
-                self.assertEqual(stage['required_obligations'], [])
-                self.assertEqual(stage['optional_obligations'], ['interrogate'])
+                self.assert_interrogate_optional_wiring(stage)
             else:
                 self.assertEqual(stage['required_obligations'], stage['components'])
                 self.assertEqual(stage['optional_obligations'], [])
@@ -858,9 +862,7 @@ class WorkflowTests(unittest.TestCase):
         # shows up in plan/next, and skipping it opens no obligation gap.
         self.assertEqual(self.plan().returncode, 0)
         verify = {s['id']: s for s in self.state()['stages']}['verify']
-        self.assertEqual(verify['components'], ['interrogate'])
-        self.assertEqual(verify['required_obligations'], [])
-        self.assertEqual(verify['optional_obligations'], ['interrogate'])
+        self.assert_interrogate_optional_wiring(verify)
         self.assertEqual(self.complete('preflight').returncode, 0)
         self.assertEqual(self.complete('document').returncode, 0)
         result = self.cli('next', self.record, '--json')
@@ -1009,7 +1011,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.state()['status'], 'VERIFIED')
 
     def test_degraded_optional_receipt_satisfies_nothing_but_absence_finishes(self):
-        # Both口径 at once: a stage-level degraded receipt is rejected even for an optional
+        # Both calibers at once: a stage-level degraded receipt is rejected even for an optional
         # obligation (component-level degraded registration with a reason is the separate
         # validate-layer trace), while leaving the optional obligation unexecuted — no receipt
         # at all — opens no gap and finishes.

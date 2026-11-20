@@ -22,7 +22,7 @@
 | 浏览器自动化工具层（control-browser 等） | 宿主工具 | ZCode：browser-use 插件原生（node_repl 驱动，主 agent 专用、子 agent 禁用）；Claude Code：本机 `~/.claude/skills/browser` CDP 脚本包（playwright-mcp 未配置，可选另装）；Codex：未配置，原生能力须实测（2026-11-20 核）。无可用工具时 interaction-verify 记 degraded 并保留手动复验步骤 | interaction-verify 工具层（非流程组件，不单独回执） |
 | fact-review（独立事实核验） | 内部程序 | WORKFLOW「完成条件先于实施」一节 + EXECUTION 独立回执（`--independent`）；不引用外部组件 | fact-review |
 
-双模式定性：上游 skill 的可调用性以其 frontmatter 为准（2026-11-20 逐个核对本机 1.3.1 原文）。带 `disable-model-invocation: true` 的 10 个仅在用户显式调用时按 [ADAPTERS](../ADAPTERS.md#组件步骤适配) 适配执行，计划路径（workflow_rules 阶段 components）不为它们产生组件义务——与上游设计一致，非本工作流缺陷。其余 6 个可被模型调用：grilling、tdd、code-review、diagnosing-bugs、research 已接线为阶段组件；domain-modeling 可模型调用而未接线，接线留给实际需要 glossary 义务的后续版本。回执义务集合由阶段 components 代码级锁定，登记在清单与接线进规则是两件事，登记不产生义务。optional_components 接线不改变 frontmatter 触发定性——带 `disable-model-invocation: true` 的组件（如 interrogate）计划路径仍不自动触发，接线只是给用户显式调用的执行一个阶段回执挂载点（可选槽），不执行不产生义务缺口。
+双模式定性：上游 skill 的可调用性以其 frontmatter 为准（2026-11-20 逐个核对本机 1.3.1 原文）。带 `disable-model-invocation: true` 的 10 个仅在用户显式调用时按 [ADAPTERS](../ADAPTERS.md#组件步骤适配) 适配执行，计划路径（workflow_rules 阶段 components）不为它们产生必需组件义务——与上游设计一致，非本工作流缺陷。其余 6 个可被模型调用：grilling、tdd、code-review、diagnosing-bugs、research 已接线为阶段组件；domain-modeling 可模型调用而未接线，接线留给实际需要 glossary 义务的后续版本。回执义务集合由阶段 components 代码级锁定，登记在清单与接线进规则是两件事，登记不产生义务。optional_components 接线不改变 frontmatter 触发定性——带 `disable-model-invocation: true` 的组件计划路径仍不自动触发；interrogate 经 optional_components 接线进 verify 可选槽，只是给用户显式调用的执行一个阶段回执挂载点，不执行不产生义务缺口（不回执、不缺口）。
 
 来源与许可以 npm registry 元数据及 GitHub 仓库 license 核实（2026-11-19）；登记不以推测填充，发现新的缺口时先标记再补证。
 
