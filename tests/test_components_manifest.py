@@ -15,6 +15,7 @@ EXTERNAL_SKILLS = (
     'improve-codebase-architecture',
     'modern-web-guidance', 'vercel-react-best-practices', 'web-design-guidelines',
     'frontend-design', 'emil-design-eng', 'ui-taste-loop', 'web-gui-tester',
+    'interrogate',
 )
 
 
