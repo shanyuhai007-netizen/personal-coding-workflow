@@ -8,7 +8,9 @@
 
 | 组件 | 性质 | 来源 | 引用位置 |
 |---|---|---|---|
-| grilling、tdd、code-review、diagnosing-bugs、research、retro、handoff、to-spec、to-tickets、implement、implement-spec、triage、wayfinder、domain-modeling、grill-with-docs、improve-codebase-architecture | 外部 skill | [Matt Pocock skills](https://github.com/mattpocock/skills)；步骤适配 pc-0.2 | clarify / implement / 两轴评审 / research / 阶段边界 / 大任务拆分与实施 / issue 分诊与决策地图、域语言与 ADR（[docs/agents](agents/) 配置） |
+| grilling、tdd、code-review、diagnosing-bugs、research | 外部 skill | [Matt Pocock skills](https://github.com/mattpocock/skills)；步骤适配 pc-0.3 | 计划路径阶段组件：clarify / diagnose（含 protocol）/ research / implement / 两轴评审 |
+| retro、handoff、to-spec、to-tickets、implement、implement-spec、triage、wayfinder、grill-with-docs、improve-codebase-architecture | 外部 skill | 同上（上游 `disable-model-invocation: true`）；用户显式调用时按 pc-0.3 适配 | 阶段边界 / 大任务拆分与实施 / issue 分诊与决策地图（[docs/agents](agents/) 配置）——仅用户显式调用，计划路径不产生组件义务 |
+| domain-modeling | 外部 skill | 同上（可模型调用）；按 pc-0.3 适配 | 域语言与 ADR（[docs/agents](agents/) 配置，经 grill-with-docs / improve-codebase-architecture 到达）——可模型调用而未接线为阶段组件，无组件义务 |
 | modern-web-guidance | 外部 skill | Google Chrome 团队（npm 包 modern-web-guidance，Apache-2.0；源码仓 [GoogleChrome/modern-web-guidance-src](https://github.com/GoogleChrome/modern-web-guidance-src)） | web |
 | vercel-react-best-practices | 外部 skill | Vercel（MIT，1.0.0） | react |
 | web-design-guidelines | 外部 skill | Vercel（1.0.0） | UI 审计，按需 |
@@ -19,12 +21,14 @@
 | 浏览器自动化工具层（control-browser 等） | 宿主工具 | ZCode：browser-use 插件原生（node_repl 驱动，主 agent 专用、子 agent 禁用）；Claude Code：本机 `~/.claude/skills/browser` CDP 脚本包（playwright-mcp 未配置，可选另装）；Codex：未配置，原生能力须实测（2026-11-20 核）。无可用工具时 interaction-verify 记 degraded 并保留手动复验步骤 | interaction-verify 工具层（非流程组件，不单独回执） |
 | fact-review（独立事实核验） | 内部程序 | WORKFLOW「完成条件先于实施」一节 + EXECUTION 独立回执（`--independent`）；不引用外部组件 | fact-review |
 
+双模式定性：上游 skill 的可调用性以其 frontmatter 为准（2026-11-20 逐个核对本机 1.3.1 原文）。带 `disable-model-invocation: true` 的 10 个仅在用户显式调用时按 [ADAPTERS](../ADAPTERS.md#组件步骤适配) 适配执行，计划路径（workflow_rules 阶段 components）不为它们产生组件义务——与上游设计一致，非本工作流缺陷。其余 6 个可被模型调用：grilling、tdd、code-review、diagnosing-bugs、research 已接线为阶段组件；domain-modeling 可模型调用而未接线，接线留给实际需要 glossary 义务的后续版本。回执义务集合由阶段 components 代码级锁定，登记在清单与接线进规则是两件事，登记不产生义务。
+
 来源与许可以 npm registry 元数据及 GitHub 仓库 license 核实（2026-11-19）；登记不以推测填充，发现新的缺口时先标记再补证。
 
 ## 设计参考致谢
 
 - [poteto verification-skill-example](https://github.com/poteto/verification-skill-example)：项目级产物验收与 feature map 的设计参考。
-- [pstack](https://cursor/plugins/tree/main/pstack)：持续执行和可复核交付的设计参考。
+- [pstack](https://github.com/cursor/plugins/tree/main/pstack)：持续执行和可复核交付的设计参考；feature map 结构（README 索引 + 四 H2 特性文件）参照其 create-verification-skill 的 feature-map-example。
 - [Agent Skills specification](https://agentskills.io/specification)：SKILL.md 结构参考。
 
 ## 项目级清单

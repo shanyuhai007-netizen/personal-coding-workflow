@@ -300,7 +300,8 @@
       "components": [
         "web-gui-tester"
       ],
-      "done_when": "关键交互路径在运行界面有实际操作记录，截图与测试报告可追溯",
+      "doctor_check": true,
+      "done_when": "关键交互路径在运行界面有实际操作记录，截图与测试报告可追溯；捕获的 doctor 检查证明运行实例为当前工作区/代码/端口/隔离数据集",
       "after": [
         "implement",
         "visual-build"

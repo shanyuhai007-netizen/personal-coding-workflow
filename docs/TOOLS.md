@@ -29,7 +29,7 @@ python3 scripts/evidence.py run --repo /path/to/project --out /path/to/evidence/
 先实际加载组件原文、按 ADAPTERS.md 执行并保存调用 trace / 决策 / 测试 / 评审结果，再封存：
 
 ```sh
-python3 scripts/evidence.py component --name tdd --mode read --skill /path/to/tdd/SKILL.md --file /path/to/tdd/tests.md --proof /path/to/execution.md --adaptation pc-0.2 --out /path/to/evidence/tdd-1
+python3 scripts/evidence.py component --name tdd --mode read --skill /path/to/tdd/SKILL.md --file /path/to/tdd/tests.md --proof /path/to/execution.md --adaptation pc-0.3 --out /path/to/evidence/tdd-1
 ```
 
 `native`、`read`、`reuse`、`degraded` 定义见 ROUTING.md。degraded 可省 skill，但必须加 `--reason` 写观察到的缺失 / 限制。proof 必须是非空的真实执行证据或复用核查，不能只有文件名清单。输出 `component.json`、源文件副本及执行证据副本；记录原始路径与 hash，便于跨客户端定位同名差异。

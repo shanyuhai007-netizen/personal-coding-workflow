@@ -223,6 +223,8 @@ def verify_receipt(task, stage, receipt_path):
         ev.verify_artifact(receipt_path.parent, item)
     if stage['id'] == 'verify' and not receipt.get('checks'):
         raise ValueError('Actual verification needs at least one captured check')
+    if stage.get('doctor_check') and not any(item.get('role') == 'doctor' for item in receipt.get('checks', [])):
+        raise ValueError('Doctor-gated interaction verification needs a captured doctor check proving the running instance; run the project doctor via the run tool and pass --doctor-check')
     for check_ref in receipt.get('checks', []):
         ev.verify_artifact(receipt_path.parent, check_ref)
         check_path = ev.resolve_file(receipt_path.parent, check_ref['path'])
@@ -482,7 +484,8 @@ def receipt(args):
             'mode': args.mode, 'verification': args.verification, 'adaptation': args.adaptation,
             'input_identity': identity(task, stage, args.input, pinned),
             'sources': [ev.artifact(p) for p in args.source],
-            'checks': [ev.artifact(p) for p in args.check],
+            'checks': [ev.artifact(p) for p in args.check] +
+                      ([{**ev.artifact(args.doctor_check), 'role': 'doctor'}] if args.doctor_check else []),
             'observed_event_ref': event_ref, 'artifacts': [ev.artifact(p) for p in args.artifact],
             'independent': args.independent, 'reviewer_id': args.reviewer_id,
             'at': time.time(),
@@ -662,6 +665,8 @@ def add_parsers(sub):
     p.add_argument('--verification', choices=['pass', 'fail', 'unknown'], required=True)
     for name in ('input', 'pin-input', 'source', 'artifact', 'check'):
         p.add_argument('--' + name, action='append', default=[])
+    p.add_argument('--doctor-check', default='',
+                   help='Captured run-tool result proving the running instance for doctor-gated stages')
     p.add_argument('--independent', action='store_true')
     p.add_argument('--reviewer-id', default='')
     p.add_argument('--reuse-check')

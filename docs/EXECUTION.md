@@ -41,7 +41,7 @@ python3 scripts/evidence.py next /evidence/task.json --json
 
 ```sh
 python3 scripts/evidence.py component-event /evidence/task.json --stage implement --obligation tdd --mode read --source /skills/tdd/SKILL.md --proof /evidence/red-green.md --status success
-python3 scripts/evidence.py stage-receipt /evidence/task.json --stage implement --obligation tdd --mode read --verification pass --source /skills/tdd/SKILL.md --input /project/cli.py --event /evidence/tdd-event.json --artifact /evidence/red-green.md --adaptation pc-0.2 --out /evidence/implement-1.json
+python3 scripts/evidence.py stage-receipt /evidence/task.json --stage implement --obligation tdd --mode read --verification pass --source /skills/tdd/SKILL.md --input /project/cli.py --event /evidence/tdd-event.json --artifact /evidence/red-green.md --adaptation pc-0.3 --out /evidence/implement-1.json
 python3 scripts/evidence.py stage-complete /evidence/task.json --stage implement --receipt /evidence/implement-1.json
 ```
 
@@ -54,7 +54,7 @@ python3 scripts/evidence.py stage-complete /evidence/task.json --stage implement
 
 每次next/完成/finish重新核验输入、源、产物、事件hash和前置条件。变化使相关项及依赖返回待验证；仅因依赖回折的阶段在依赖恢复且回执仍可验证时自动回升通过（降级与回升均记入台账 `invalidation_history`/`revalidations`），计划修订显式要求的 preflight 重核（`recheck_required`）不被自动回升替代，需重新 stage-complete 才清除。旧回执保留。
 
-verify receipt另外必须提供至少一个 `--check /evidence/check/result.json`，来自 [run工具](TOOLS.md#可靠检查)，当前树、原退出码及日志hash均核验。实际产品路径、服务环境和模型质量仍需对应产物，空泛pass声明不能替代它们。独立阶段加 `--independent --reviewer-id <独立上下文ID>`，Standards与Spec必须不同上下文；字段是声明，独立性还须回查原始执行记录。
+verify receipt另外必须提供至少一个 `--check /evidence/check/result.json`，来自 [run工具](TOOLS.md#可靠检查)，当前树、原退出码及日志hash均核验。interaction-verify 回执另须 `--doctor-check <run result.json>` 提供捕获的 doctor 检查（消费项目契约 Doctor 字段，证明运行实例为当前工作区/代码/端口/隔离数据集），校验口径与 verify 检查相同；契约缺 Doctor 字段时按缺组件降级，交互条件保持未验。doctor 失败进入阶段预算与 stage-resume 单周期封顶，不无限重试。实际产品路径、服务环境和模型质量仍需对应产物，空泛pass声明不能替代它们。独立阶段加 `--independent --reviewer-id <独立上下文ID>`，Standards与Spec必须不同上下文；字段是声明，独立性还须回查原始执行记录。
 
 reuse提供 `--reuse-check <当前适用性核验文件>`；所需组件仍须对应源。degraded、失败、unknown不能满足必需阶段。receipt输出路径不可重用，以便保留返工历史。
 

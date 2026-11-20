@@ -88,6 +88,69 @@ class WorkflowTests(unittest.TestCase):
         ids = {s['id'] for s in self.state()['stages']}
         self.assertNotIn('interaction-verify', ids)
 
+    def doctor_result(self, name, code=0):
+        out = self.root / name
+        statement = 'print("doctor ok")' if code == 0 else 'raise SystemExit(%d)' % code
+        status = self.cli('run', '--out', out, '--', sys.executable, '-c', statement).returncode
+        self.assertEqual(status, code)
+        return out / 'result.json'
+
+    def test_doctor_check_gates_interaction_verify_receipts(self):
+        self.assertEqual(self.plan(behavior_change=True, interaction=True).returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        self.assertEqual(self.complete('implement', 'tdd').returncode, 0)
+        # Screenshots bind the code tree, not the running instance; only a captured
+        # doctor check proves the driven instance is the current workspace/code/port/data.
+        result = self.complete('interaction-verify', 'web-gui-tester')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('doctor', result.stderr)
+        failed = self.complete('interaction-verify', 'web-gui-tester',
+                               doctor=self.doctor_result('doctor-failing', code=3))
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn('Failed or stale verification check', failed.stderr)
+        passed = self.complete('interaction-verify', 'web-gui-tester',
+                               doctor=self.doctor_result('doctor-ok'))
+        self.assertEqual(passed.returncode, 0, passed.stderr)
+
+    def test_interaction_verify_degrades_without_doctor_and_stays_unmet(self):
+        # A project contract without a Doctor field degrades like a missing component:
+        # the limitation is recorded, the interaction conditions stay unverified.
+        self.assertEqual(self.plan(behavior_change=True, interaction=True).returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        self.assertEqual(self.complete('implement', 'tdd').returncode, 0)
+        result = self.complete('interaction-verify', 'web-gui-tester', mode='degraded')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Degraded', result.stderr)
+        finish = self.cli('finish', self.record)
+        self.assertNotEqual(finish.returncode, 0)
+        self.assertIn('interaction-verify', finish.stderr)
+        self.assertNotEqual(self.state()['status'], 'VERIFIED')
+
+    def test_doctor_gate_failures_block_after_budget_with_single_resume(self):
+        # Persistent doctor drift exhausts the stage budget into blocked, and the
+        # stage gets exactly one bounded resume cycle, never unlimited retries.
+        self.assertEqual(self.plan(behavior_change=True, interaction=True).returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        self.assertEqual(self.complete('implement', 'tdd').returncode, 0)
+        drift = self.doctor_result('doctor-drift', code=3)
+        for _ in range(3):
+            self.assertNotEqual(self.complete('interaction-verify', 'web-gui-tester', doctor=drift).returncode, 0)
+        self.assertIn('budget exhausted', self.complete('interaction-verify', 'web-gui-tester', doctor=drift).stderr)
+        stage = {s['id']: s for s in self.state()['stages']}['interaction-verify']
+        self.assertEqual(stage['status'], 'blocked')
+        self.assertEqual(self.state()['status'], 'BLOCKED')
+        recovery = self.root / 'doctor-recovery.md'
+        recovery.write_text('Doctor drift fixed once; new doctor run captured.\n')
+        resumed = self.cli('stage-resume', self.record, '--stage', 'interaction-verify',
+                           '--reason', 'Doctor drift fixed once', '--proof', recovery)
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        for _ in range(3):
+            self.assertNotEqual(self.complete('interaction-verify', 'web-gui-tester', doctor=drift).returncode, 0)
+        second = self.cli('stage-resume', self.record, '--stage', 'interaction-verify',
+                          '--reason', 'Another doctor attempt', '--proof', recovery)
+        self.assertNotEqual(second.returncode, 0)
+        self.assertIn('single bounded resume cycle', second.stderr)
+
     def test_visual_only_work_has_direction_build_and_final_visual_gate(self):
         result = self.plan(ui=True, visual_change=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -148,6 +211,8 @@ class WorkflowTests(unittest.TestCase):
             check = self.root / ('check-' + out.stem)
             self.assertEqual(self.cli('run', '--out', check, '--', sys.executable, '-c', 'print("fixture behavior checked")').returncode, 0)
             args += ['--check', check / 'result.json']
+        if options.get('doctor'):
+            args += ['--doctor-check', options['doctor']]
         if obligation != 'output':
             args += ['--source', source]
         if options.get('reviewer'):

@@ -18,7 +18,7 @@ tags: [agents, coding, contract]
 ## 运行与驱动
 
 - 安装 / 构建 / 检查 / 启动 / 停止：写实际命令或脚本入口。
-- Doctor：如何确认运行的是当前工作区、当前代码、预期端口及隔离的数据集。
+- Doctor：如何确认运行的是当前工作区、当前代码、预期端口及隔离的数据集。interaction=true 时 interaction-verify 以捕获的 doctor 检查消费此字段；契约缺此字段的项目按缺组件降级，交互条件保持未验。
 - Drive：CLI、HTTP 或浏览器入口，至少一条关键用户路径。
 - Observe：日志、输出、截图、数据库或接口断言的读取方式。
 - Isolation / Cleanup：隔离端口、临时数据、资源归属和按仓库规则进行清理的方式。
@@ -27,7 +27,7 @@ tags: [agents, coding, contract]
 ## 验证资产
 
 - 既有检查与端到端配方路径。
-- 首批最重要的 3–5 个 feature 入口；每条写成功标准及最容易出现假阳性的情形。
+- Feature map：README 索引 + 每个用户可见 feature 一个文件（首批 3–5 个，从路由 / 命令 / 菜单 / 文档识别）。README 记基线前置、驱动约定、证据与跳过申报规则及 feature 清单，清单顺序即 sweep 顺序，覆盖以遍历完清单为准；feature 文件固定四节——`Sub-features` / `How to get to it (user POV)` / `Driving it with <harness>` / `Gotchas`，只写用户路径、稳定句柄、所需状态、命令与可观察证据，不写实现细节；成功标准落在 Driving 的可观察结果里，最容易出现假阳性的情形收进 Gotchas。
 - 真实服务与替身测试分别证明什么；缺失环境如何标记与补验。
 - 证据存放位置、代码树标识、完整命令日志及 hash。重要 driver / 原始样本放入持久目录后验证可读。涉及用户内容的产物保留在允许的本地范围。
 

@@ -32,6 +32,8 @@ Phase 3 减法、AI Tells 与适用 Copy Audit 在最终证据固定前完成。
 
 截图采集与运行交互验证优先使用宿主浏览器自动化，工具层清单见 [COMPONENTS](COMPONENTS.md)；浏览器操作限主 agent 执行，不派子 agent。interaction=true 时 interaction-verify 按 web-gui-tester 方法论驱动，其测试报告与截图经 [TOOLS](TOOLS.md) archive 归档后作为 acceptance 观测证据，critic 复用其截图；interaction=false 的视觉任务仍需运行界面截图，用同一宿主浏览器能力采集。无浏览器能力时 interaction-verify 记 degraded，交互条件保持未验并保留手动复验步骤。
 
+interaction-verify 的 doctor 前置：驱动前先跑项目契约 Doctor 字段定义的核验，回执以 `--doctor-check` 附 [run](TOOLS.md#可靠检查) 捕获的检查，证明运行实例为当前工作区 / 代码 / 端口 / 隔离数据集——树绑定只证明代码身份，不证明运行实例身份。全程三条不变量：① 每次意外（驱动失败、drift、新会话）后先重跑 doctor 再继续；doctor 看不到的故障（健康进程上的卡死界面状态）重置到已知状态或重启实例，不侥幸继续。② 已捕获证据在每次 cleanup 后仍在其命名位置逐一核验，不假定存活。③ 失败残留必清——清残留与实例，不清证据。doctor 因 drift 失败：修一次、重试一次（stage-resume 单周期封顶），仍败按阶段预算判 blocked，不无限重试。契约缺 Doctor 字段的项目按缺组件降级记 degraded 并保留手动复验步骤。
+
 impeccable 使用已验证版本、明确扫描目标，保存原命令/退出码/日志及例外。检测通过仅证明所扫规则未发现对应问题，不代表高品味；扫描不可执行时显式记录替代审计和失去的保障。以真实运行版本核对退出码含义，不硬编码上游规则数量。
 
 沿用事件、receipt、artifact、conditions 与 acceptance 总账。保存方向复用依据或探索结果、预算、截图与对应树/运行环境、每轮独立会话标识及输入输出、修复/拒绝理由、未决缺陷、审计与真值来源、最终截图。visual-review 使用完整树身份；回执 independent 字段不证明每轮上下文隔离，需原始记录支持。最终语义质量由评审负责，工具只校验声明与证据一致性。

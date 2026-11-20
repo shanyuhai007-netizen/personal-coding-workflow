@@ -122,7 +122,7 @@ class EvidenceTests(unittest.TestCase):
         proof.write_text('')
         out = self.root / 'component'
         result = self.cli('component', '--name', 'fixture', '--mode', 'degraded', '--proof', proof,
-                          '--reason', 'Not installed in isolated fixture', '--adaptation', 'pc-0.2', '--out', out)
+                          '--reason', 'Not installed in isolated fixture', '--adaptation', 'pc-0.3', '--out', out)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(out.exists())
 
