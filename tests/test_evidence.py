@@ -117,6 +117,62 @@ class EvidenceTests(unittest.TestCase):
         (self.repo / 'app.txt').write_text('later change\n')
         self.assertNotEqual(validate().returncode, 0)
 
+    def test_validate_component_registration_stays_obligation_agnostic_for_optional_participation(self):
+        # task['components'] is assembled from explicit `component` outputs; nothing derives it
+        # from stage obligations (docs/TOOLS.md: validate checks declarations, not obligation
+        # sets). A component some rule sets declare optional therefore uses the existing path.
+        check = self.root / 'check'
+        self.assertEqual(self.cli('run', '--out', check, '--', sys.executable, '-c', 'print("ok")').returncode, 0)
+        tree = json.loads((check / 'result.json').read_text())['tree_after']
+        proof = self.root / 'proof.md'
+        proof.write_text('Synthetic output: behavior observed; both review axes pass.\n')
+        skill = self.root / 'SKILL.md'
+        skill.write_text('---\nname: fixture\ndescription: synthetic\n---\nRun a check.\n')
+        core = self.root / 'component-core'
+        self.assertEqual(self.cli('component', '--skill', skill, '--name', 'code-review', '--mode', 'read',
+                                  '--proof', proof, '--adaptation', 'No native skill tool in fixture',
+                                  '--out', core).returncode, 0)
+        # Degraded registration of an optional component is a kept trace when the reason is present.
+        optional = self.root / 'component-optional'
+        self.assertEqual(self.cli('component', '--name', 'interrogate', '--mode', 'degraded',
+                                  '--proof', proof, '--reason', 'Adversarial skill not installed in fixture',
+                                  '--adaptation', 'pc-0.3 synthetic adaptation', '--out', optional).returncode, 0)
+        artifact = {'path': str(proof), 'sha256': hashlib.sha256(proof.read_bytes()).hexdigest()}
+        task = {'tree': tree, 'independent_required': True,
+                'conditions': [{'id': 'behavior', 'required': True, 'status': 'pass', 'evidence': artifact}],
+                'checks': [str(check / 'result.json')],
+                'components': [str(core / 'component.json')],
+                'reviews': [{'axis': axis, 'tree': tree, 'independent': True, 'status': 'pass',
+                             'evidence': artifact} for axis in ('standards', 'spec')]}
+        record = self.root / 'task.json'
+
+        def validate():
+            record.write_text(json.dumps(task))
+            return self.cli('validate', record)
+
+        # Regression: a task without any optional participation still validates unchanged.
+        self.assertEqual(validate().returncode, 0)
+        task['components'].append(str(optional / 'component.json'))
+        self.assertEqual(validate().returncode, 0)
+        registration = optional / 'component.json'
+        # The existing per-component checks apply to optional registrations equally.
+        original = registration.read_text()
+        for field, value, error in (('adaptation', '', 'Component needs name and adaptation'),
+                                    ('reason', '', 'Degradation requires a reason'),
+                                    ('mode', 'partial', 'Invalid component mode')):
+            with self.subTest(field=field):
+                declared = json.loads(original)
+                declared[field] = value
+                registration.write_text(json.dumps(declared))
+                result = validate()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(error, result.stderr)
+        registration.write_text(original)
+        task['components'] = []
+        result = validate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('At least one component receipt is required', result.stderr)
+
     def test_component_rejects_empty_execution_proof_before_writing(self):
         proof = self.root / 'empty.md'
         proof.write_text('')

@@ -40,12 +40,14 @@ class WorkflowTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(self.script), *map(str, args)], cwd=self.repo,
                               capture_output=True, text=True)
 
-    def plan(self, intent='implement', **features):
+    def plan(self, intent='implement', extra_sources=(), **features):
         facts = {'intent': {'value': intent, 'evidence': 'synthetic user request'}}
         facts.update({k: {'value': v, 'evidence': 'synthetic fixture contract'} for k, v in features.items()})
         path = self.root / 'facts.json'
         sources = {}
-        for name in ('tdd', 'code-review', 'grilling', 'research', 'diagnosing-bugs', 'modern-web-guidance', 'vercel-react-best-practices', 'ui-taste-loop', 'frontend-design', 'web-gui-tester'):
+        names = ('tdd', 'code-review', 'grilling', 'research', 'diagnosing-bugs', 'modern-web-guidance',
+                 'vercel-react-best-practices', 'ui-taste-loop', 'frontend-design', 'web-gui-tester')
+        for name in names + tuple(extra_sources):
             source = self.root / (name + '.md')
             source.write_text('Synthetic ' + name + ' source.\n')
             sources[name] = str(source)
@@ -870,12 +872,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual({s['id']: s for s in self.state()['stages']}['verify']['status'], 'passed')
 
 
-    def optional_scripts(self, required=('research', 'diagnosing-bugs'), optional=('grilling',)):
-        """Copied rule set declaring optional components on research; production rule bytes stay untouched."""
+    def optional_scripts(self, stage_id='research', required=('research', 'diagnosing-bugs'), optional=('grilling',)):
+        """Copied rule set declaring optional components on a stage; production rule bytes stay untouched."""
         scripts = Path(tempfile.mkdtemp(prefix='optional-rules-', dir=self.root)) / 'scripts'
         shutil.copytree(SCRIPT.parent, scripts, ignore=shutil.ignore_patterns('__pycache__'))
         rules = json.loads((scripts / 'workflow_rules.json').read_text())
-        stage = next(s for s in rules['stages'] if s['id'] == 'research')
+        stage = next(s for s in rules['stages'] if s['id'] == stage_id)
         stage['components'] = list(required) + list(optional)
         stage['optional_components'] = list(optional)
         (scripts / 'workflow_rules.json').write_text(json.dumps(rules, ensure_ascii=False, indent=2) + '\n')
@@ -977,6 +979,90 @@ class WorkflowTests(unittest.TestCase):
                           '--reason', 'fixture whitespace drift only', '--out', refiled)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(refiled.read_text())['obligation_id'], 'grilling')
+
+    def plan_optional_verify(self):
+        """Verify stage wired like the planned interrogate hosting: optional-only components."""
+        self.script = self.optional_scripts(stage_id='verify', required=(), optional=('interrogate',))
+        self.assertEqual(self.plan(extra_sources=('interrogate',)).returncode, 0)
+        verify = {s['id']: s for s in self.state()['stages']}['verify']
+        self.assertEqual(verify['required_obligations'], [])
+        self.assertEqual(verify['optional_obligations'], ['interrogate'])
+        for stage in ('preflight', 'document'):
+            self.assertEqual(self.complete(stage).returncode, 0)
+        return verify
+
+    def test_finish_verifies_task_with_optional_verify_participation_end_to_end(self):
+        # Optional participation enters through explicit registration (component-event) and a
+        # verify-stage optional receipt; the executed receipt keeps full verification.
+        self.plan_optional_verify()
+        output = self.make_receipt('verify', 'output')
+        optional = self.make_receipt('verify', 'interrogate')
+        # Executing an optional component means a complete receipt, captured checks included.
+        self.assertTrue(json.loads(optional.read_text())['checks'])
+        event = json.loads(Path(json.loads(optional.read_text())['observed_event_ref']['path']).read_text())
+        self.assertEqual((event['component'], event['stage_id']), ('interrogate', 'verify'))
+        result = self.cli('stage-complete', self.record, '--stage', 'verify',
+                          '--receipt', output, '--receipt', optional)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.complete('close').returncode, 0)
+        self.assertEqual(self.cli('finish', self.record).returncode, 0)
+        self.assertEqual(self.state()['status'], 'VERIFIED')
+
+    def test_degraded_optional_receipt_satisfies_nothing_but_absence_finishes(self):
+        # Both口径 at once: a stage-level degraded receipt is rejected even for an optional
+        # obligation (component-level degraded registration with a reason is the separate
+        # validate-layer trace), while leaving the optional obligation unexecuted — no receipt
+        # at all — opens no gap and finishes.
+        self.plan_optional_verify()
+        output = self.make_receipt('verify', 'output')
+        degraded = self.make_receipt('verify', 'interrogate', mode='degraded')
+        result = self.cli('stage-complete', self.record, '--stage', 'verify',
+                          '--receipt', output, '--receipt', degraded)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Degraded', result.stderr)
+        verify = {s['id']: s for s in self.state()['stages']}['verify']
+        self.assertNotEqual(verify['status'], 'passed')
+        self.assertNotEqual(self.cli('finish', self.record).returncode, 0)
+        # Skipping the optional component is the valid path: required coverage alone passes.
+        passed = self.cli('stage-complete', self.record, '--stage', 'verify', '--receipt', output)
+        self.assertEqual(passed.returncode, 0, passed.stderr)
+        self.assertEqual(self.complete('close').returncode, 0)
+        self.assertEqual(self.cli('finish', self.record).returncode, 0)
+        self.assertEqual(self.state()['status'], 'VERIFIED')
+
+    def test_optional_receipt_without_adaptation_keeps_finish_open(self):
+        # The finish layer still checks every registered component receipt for an adaptation;
+        # optional obligations get no lighter treatment.
+        self.plan_optional_verify()
+        output = self.make_receipt('verify', 'output')
+        broken = self.make_receipt('verify', 'interrogate')
+        value = json.loads(broken.read_text())
+        value['adaptation'] = ''
+        broken.write_text(json.dumps(value))
+        result = self.cli('stage-complete', self.record, '--stage', 'verify',
+                          '--receipt', output, '--receipt', broken)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('adaptation is required', result.stderr)
+        finish = self.cli('finish', self.record)
+        self.assertNotEqual(finish.returncode, 0)
+        self.assertIn('verify', finish.stderr)
+        self.assertNotEqual(self.state()['status'], 'VERIFIED')
+
+    def test_finish_conditions_unchanged_for_tasks_without_optional_participation(self):
+        # The production rule set declares exactly one optional component (interrogate on
+        # verify); this run files no optional receipt, and the finish gate behaves as
+        # before: incomplete tasks are rejected with their missing stages named.
+        self.assertEqual(self.plan(behavior_change=True).returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        early = self.cli('finish', self.record)
+        self.assertNotEqual(early.returncode, 0)
+        self.assertIn('implement', early.stderr)
+        self.assertIn('Degraded', self.complete('implement', 'tdd', mode='degraded').stderr)
+        self.assertEqual(self.complete('implement', 'tdd').returncode, 0)
+        for stage in ('verify', 'close'):
+            self.assertEqual(self.complete(stage).returncode, 0)
+        self.assertEqual(self.cli('finish', self.record).returncode, 0)
+        self.assertEqual(self.state()['status'], 'VERIFIED')
 
 
 if __name__ == '__main__':
