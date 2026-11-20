@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,7 @@ class WorkflowTests(unittest.TestCase):
         os.environ['PERSONAL_CODING_ALLOW_VOLATILE_RECORD'] = '1'
         self.addCleanup(os.environ.pop, 'PERSONAL_CODING_ALLOW_VOLATILE_RECORD', None)
         self.root = Path(self.temp.name)
+        self.script = SCRIPT  # Tests with copied rule sets point this at the copy's CLI.
         self.repo = self.root / 'repo'
         self.repo.mkdir()
         self.git('init', '-q')
@@ -35,7 +37,7 @@ class WorkflowTests(unittest.TestCase):
         return subprocess.check_output(['git', '-C', str(self.repo), *args]).decode().strip()
 
     def cli(self, *args):
-        return subprocess.run([sys.executable, str(SCRIPT), *map(str, args)], cwd=self.repo,
+        return subprocess.run([sys.executable, str(self.script), *map(str, args)], cwd=self.repo,
                               capture_output=True, text=True)
 
     def plan(self, intent='implement', **features):
@@ -604,7 +606,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(len(self.state()['revisions']), 2)
 
     def cli_env(self, env, *args):
-        return subprocess.run([sys.executable, str(SCRIPT), *map(str, args)], cwd=self.repo,
+        return subprocess.run([sys.executable, str(self.script), *map(str, args)], cwd=self.repo,
                               capture_output=True, text=True, env=env)
 
     def test_purged_record_locations_are_refused_at_plan_and_finish(self):
@@ -831,6 +833,125 @@ class WorkflowTests(unittest.TestCase):
                 stage = {s['id']: s for s in self.state()['stages']}['document']
                 self.assertFalse(stage.get('costs'))
                 self.assertEqual(stage['attempts'], 0)
+
+    def test_default_ruleset_keeps_all_components_required(self):
+        # The production rule set declares no optional_components: behavior stays as before.
+        result = self.plan(behavior_change=True, ui=True, react=True, interaction=True,
+                           nontrivial=True, unfamiliar_api=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stages = self.state()['stages']
+        self.assertTrue(stages)
+        for stage in stages:
+            self.assertEqual(stage['required_obligations'], stage['components'])
+            self.assertEqual(stage['optional_obligations'], [])
+
+    def optional_scripts(self, required=('research', 'diagnosing-bugs'), optional=('grilling',)):
+        """Copied rule set declaring optional components on research; production rule bytes stay untouched."""
+        scripts = Path(tempfile.mkdtemp(prefix='optional-rules-', dir=self.root)) / 'scripts'
+        shutil.copytree(SCRIPT.parent, scripts, ignore=shutil.ignore_patterns('__pycache__'))
+        rules = json.loads((scripts / 'workflow_rules.json').read_text())
+        stage = next(s for s in rules['stages'] if s['id'] == 'research')
+        stage['components'] = list(required) + list(optional)
+        stage['optional_components'] = list(optional)
+        (scripts / 'workflow_rules.json').write_text(json.dumps(rules, ensure_ascii=False, indent=2) + '\n')
+        return scripts / 'evidence.py'
+
+    def plan_optional_research(self):
+        self.script = self.optional_scripts()
+        self.assertEqual(self.plan(unfamiliar_api=True).returncode, 0)
+        research = {s['id']: s for s in self.state()['stages']}['research']
+        self.assertEqual(research['components'], ['research', 'diagnosing-bugs', 'grilling'])
+        self.assertEqual(research['required_obligations'], ['research', 'diagnosing-bugs'])
+        self.assertEqual(research['optional_obligations'], ['grilling'])
+        self.assertEqual(self.complete('preflight').returncode, 0)
+
+    def test_optional_component_absence_leaves_no_obligation_gap(self):
+        # Not executing an optional component is a valid outcome; it opens no receipt gap.
+        self.plan_optional_research()
+        result = self.cli('stage-complete', self.record, '--stage', 'research',
+                          '--receipt', self.make_receipt('research', 'research'),
+                          '--receipt', self.make_receipt('research', 'diagnosing-bugs'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        research = {s['id']: s for s in self.state()['stages']}['research']
+        self.assertEqual(research['status'], 'passed')
+
+    def test_optional_component_receipt_passes_full_verification(self):
+        self.plan_optional_research()
+        result = self.cli('stage-complete', self.record, '--stage', 'research',
+                          '--receipt', self.make_receipt('research', 'research'),
+                          '--receipt', self.make_receipt('research', 'diagnosing-bugs'),
+                          '--receipt', self.make_receipt('research', 'grilling'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        research = {s['id']: s for s in self.state()['stages']}['research']
+        self.assertEqual(research['status'], 'passed')
+
+    def test_missing_required_receipt_still_rejected_alongside_optional(self):
+        self.plan_optional_research()
+        for missing in ('research', 'diagnosing-bugs'):
+            with self.subTest(missing=missing):
+                present = [o for o in ('research', 'diagnosing-bugs') if o != missing]
+                result = self.cli('stage-complete', self.record, '--stage', 'research',
+                                  '--receipt', self.make_receipt('research', present[0]),
+                                  '--receipt', self.make_receipt('research', 'grilling'))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('obligation set mismatch', result.stderr)
+                research = {s['id']: s for s in self.state()['stages']}['research']
+                self.assertNotEqual(research['status'], 'passed')
+
+    def test_receipt_outside_declared_obligations_is_rejected(self):
+        self.plan_optional_research()
+        stranger = self.make_receipt('research', 'grilling')
+        value = json.loads(stranger.read_text())
+        value['obligation_id'] = 'tdd'
+        stranger.write_text(json.dumps(value))
+        result = self.cli('stage-complete', self.record, '--stage', 'research',
+                          '--receipt', self.make_receipt('research', 'research'),
+                          '--receipt', self.make_receipt('research', 'diagnosing-bugs'),
+                          '--receipt', stranger)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Unexpected obligation', result.stderr)
+
+    def test_duplicate_optional_receipt_is_rejected(self):
+        self.plan_optional_research()
+        result = self.cli('stage-complete', self.record, '--stage', 'research',
+                          '--receipt', self.make_receipt('research', 'research'),
+                          '--receipt', self.make_receipt('research', 'diagnosing-bugs'),
+                          '--receipt', self.make_receipt('research', 'grilling'),
+                          '--receipt', self.make_receipt('research', 'grilling'))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('obligation set mismatch', result.stderr)
+
+    def test_degraded_optional_receipt_satisfies_no_obligation(self):
+        # Skipping an optional component means no receipt at all; a degraded receipt satisfies nothing.
+        self.plan_optional_research()
+        result = self.cli('stage-complete', self.record, '--stage', 'research',
+                          '--receipt', self.make_receipt('research', 'research'),
+                          '--receipt', self.make_receipt('research', 'diagnosing-bugs'),
+                          '--receipt', self.make_receipt('research', 'grilling', mode='degraded'))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Degraded', result.stderr)
+        research = {s['id']: s for s in self.state()['stages']}['research']
+        self.assertNotEqual(research['status'], 'passed')
+
+    def test_optional_receipt_supports_manual_events_and_refile(self):
+        # The optional obligation stays usable through component-event and receipt-refile.
+        self.plan_optional_research()
+        grilling = self.make_receipt('research', 'grilling')
+        result = self.cli('stage-complete', self.record, '--stage', 'research',
+                          '--receipt', self.make_receipt('research', 'research'),
+                          '--receipt', self.make_receipt('research', 'diagnosing-bugs'),
+                          '--receipt', grilling)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        facts = self.root / 'facts.json'
+        facts.write_text(facts.read_text() + '\n')
+        self.assertEqual(self.cli('next', self.record, '--json').returncode, 0)
+        research = {s['id']: s for s in self.state()['stages']}['research']
+        self.assertEqual(research['status'], 'needs_verification')
+        refiled = self.root / 'grilling-refiled.json'
+        result = self.cli('receipt-refile', self.record, '--receipt', grilling, '--stage', 'research',
+                          '--reason', 'fixture whitespace drift only', '--out', refiled)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(refiled.read_text())['obligation_id'], 'grilling')
 
 
 if __name__ == '__main__':

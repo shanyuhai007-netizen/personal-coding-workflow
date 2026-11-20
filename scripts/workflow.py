@@ -66,10 +66,13 @@ def compile_stages(facts, rules):
         if rule['id'] == 'implement' and facts.get('implementation_complete', {}).get('value', False):
             continue
         if selected(rule['when'], facts):
-            stage = {k: v for k, v in rule.items() if k not in ('when', 'after')}
+            stage = {k: v for k, v in rule.items() if k not in ('when', 'after', 'optional_components')}
             if rule['id'] == 'preflight' and facts.get('implementation_complete', {}).get('value', False):
                 stage['scope'] = 'tree'
-            stage.update(status='pending', receipts=[], attempts=0, goal_refs=['user-goal'], required_obligations=stage['components'][:])
+            optional = [c for c in stage['components'] if c in rule.get('optional_components', [])]
+            stage.update(status='pending', receipts=[], attempts=0, goal_refs=['user-goal'],
+                         required_obligations=[c for c in stage['components'] if c not in optional],
+                         optional_obligations=optional[:])
             stages.append(stage)
     set_dependencies(stages, rules)
     return stages
@@ -168,6 +171,29 @@ def stage_by_id(task, name):
     return next(s for s in task['stages'] if s['id'] == name)
 
 
+def declared_obligations(stage):
+    """Required plus optional component obligations; 'output' is tracked separately."""
+    return stage['required_obligations'] + stage.get('optional_obligations', [])
+
+
+def obligation_failures(stage, receipts):
+    """Explain every way the receipt set misses the declared obligations; empty means satisfied."""
+    needed = set(stage['required_obligations'] or ['output'])
+    optional = set(stage.get('optional_obligations', []))
+    covered = {r['obligation_id'] for r in receipts}
+    counts = {}
+    for receipt in receipts:
+        counts[receipt['obligation_id']] = counts.get(receipt['obligation_id'], 0) + 1
+    failures = []
+    if not needed <= covered:
+        failures.append('missing required obligations: ' + ', '.join(sorted(needed - covered)))
+    if covered - needed - optional:
+        failures.append('undeclared extra obligations: ' + ', '.join(sorted(covered - needed - optional)))
+    if len(receipts) != len(covered):
+        failures.append('duplicate obligation receipts: ' + ', '.join(sorted(o for o, n in counts.items() if n > 1)))
+    return failures
+
+
 def identity(task, stage, inputs, pinned=None):
     value = {'files': {str(Path(p).resolve()): ev.sha(p) for p in inputs}}
     if pinned:
@@ -201,7 +227,7 @@ def verify_receipt(task, stage, receipt_path):
     receipt = read(receipt_path)
     if (receipt['task_id'], receipt['stage_id']) != (task['task_id'], stage['id']):
         raise ValueError('Receipt task/stage identity mismatch')
-    if receipt['obligation_id'] not in stage['required_obligations'] + ['output']:
+    if receipt['obligation_id'] not in declared_obligations(stage) + ['output']:
         raise ValueError('Unexpected obligation')
     if receipt['mode'] not in ('native', 'read', 'reuse', 'degraded'):
         raise ValueError('Invalid component mode')
@@ -305,9 +331,9 @@ def receipt_problems(task, stage):
     """Receipt-level verification only; independent of the stage status field."""
     try:
         receipts = [verify_receipt(task, stage, p) for p in stage['receipts']]
-        needed = set(stage['required_obligations'] or ['output'])
-        if needed != {r['obligation_id'] for r in receipts} or len(receipts) != len(needed):
-            raise ValueError('Missing or duplicate obligation receipts')
+        failures = obligation_failures(stage, receipts)
+        if failures:
+            raise ValueError('Stage obligation set mismatch: ' + '; '.join(failures))
         if stage.get('independent'):
             others = [read(p) for s in task['stages'] if s['id'] in ('standards', 'spec-review')
                       and s['id'] != stage['id'] and s['status'] == 'passed' for p in s['receipts']]
@@ -399,10 +425,10 @@ def operate(args):
             raise ValueError('Dependencies unmet: ' + ', '.join(s['id'] for s in deps if s['status'] != 'passed'))
         old_receipts = stage['receipts'][:]
         try:
-            needed = set(stage['required_obligations'] or ['output'])
             receipts = [verify_receipt(task, stage, p) for p in args.receipt]
-            if {r['obligation_id'] for r in receipts} != needed or len(receipts) != len(needed):
-                raise ValueError('Required obligation set mismatch: ' + ', '.join(sorted(needed)))
+            failures = obligation_failures(stage, receipts)
+            if failures:
+                raise ValueError('Stage obligation set mismatch: ' + '; '.join(failures))
             stage.update(status='passed', receipts=[str(Path(p).resolve()) for p in args.receipt])
             errors = problems(task, stage)
             if errors:
@@ -510,7 +536,7 @@ def refile(args):
     if not args.reason.strip():
         raise ValueError('Refile needs an explicit reason for why semantics are unchanged')
     stage = stage_by_id(task, args.stage)
-    if source.get('obligation_id') not in stage['required_obligations'] + ['output']:
+    if source.get('obligation_id') not in declared_obligations(stage) + ['output']:
         raise ValueError('Unexpected obligation')
     previous = source.get('input_identity')
     if not previous or set(previous) - {'files', 'pinned'}:
@@ -577,8 +603,8 @@ def component_event(args):
     with locked(args.record) as path:
         task = load(path)
         stage = stage_by_id(task, args.stage)
-        if args.obligation not in stage['required_obligations']:
-            raise ValueError('Component is not required by this stage')
+        if args.obligation not in declared_obligations(stage):
+            raise ValueError('Component is not declared for this stage')
         if args.mode not in ('read', 'reuse'):
             raise ValueError('Manual events can record read or reuse; native requires host observation')
         source = Path(args.source).resolve()
