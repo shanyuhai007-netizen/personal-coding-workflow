@@ -45,11 +45,20 @@ python3 scripts/evidence.py stage-receipt /evidence/task.json --stage implement 
 python3 scripts/evidence.py stage-complete /evidence/task.json --stage implement --receipt /evidence/implement-1.json
 ```
 
-每项所需组件先登记事件，再提交一份receipt；无专业组件用 obligation `output`，此时不需要事件文件。`--event` 可省略：省略时组件义务自动选用本任务最新登记的同阶段、同组件、同 mode 成功事件；显式传入时必须是 component-event 产出的 JSON。native只能来自宿主事件；read/reuse手工事件标为agent声明并关联执行核验文件。事件必须登记于当前任务且与任务、阶段、组件、模式、规范源路径/hash相符。ZCode开始观察后，手工事件不能替代宿主事件。证明文件和receipt仍是调用者声明，不能证明思考质量。输入选择与结论有关文件；最终 verify、两轴评审及close自动绑定完整Git树。实现阶段选有关文件，后续无关改动不会让历史事实永久失效。早期组件回执（diagnose/web/react 等）按当时相关文件绑定：实现落地改变相关文件后回折待验证，实现后预期重开一次（2026-11-18 三任务均如此，约 15 分钟/次的已知成本，排期按此计）。每次next/完成/finish重新核验输入、源、产物、事件hash和前置条件。变化使相关项及依赖返回待验证；旧回执保留。
+每项所需组件先登记事件，再提交一份receipt；无专业组件用 obligation `output`，此时不需要事件文件。`--event` 可省略：省略时组件义务自动选用本任务最新登记的同阶段、同组件、同 mode 成功事件；显式传入时必须是 component-event 产出的 JSON。native只能来自宿主事件；read/reuse手工事件标为agent声明并关联执行核验文件。事件必须登记于当前任务且与任务、阶段、组件、模式、规范源路径/hash相符。ZCode开始观察后，手工事件不能替代宿主事件。证明文件和receipt仍是调用者声明，不能证明思考质量。输入选择与结论有关文件；最终 verify、两轴评审及close自动绑定完整Git树。实现阶段选有关文件，后续无关改动不会让历史事实永久失效。
+
+早期组件回执（diagnose/web/react 等）按当时相关文件绑定，预期修改不应设计成回折，两条低成本路径：
+
+- **预定修改对象在回执落成时封存**：`stage-receipt --pin-input <path>` 把该输入的字节副本存入 `<回执名>.inputs/`，身份绑定快照而非活文件。任务随后按计划修改该文件不再使回执待验证；快照被改动即失效。tree 绑定阶段（verify、两轴评审、close 等）不接受 pin——最终证据仍须对应最终交付树。
+- **语义未变仅 hash 变化时重录**：`receipt-refile --receipt <旧回执> --stage <id> --reason <语义未变的依据> --out <新回执>` 以当前 hash 重发。工具逐字复制其余字段、封存源回执 hash、记录变更路径，agent 只确认语义。仅 file 绑定回执可 refile；tree/条件绑定的失效必须重做对应工作。同一文件不能同时作为 `--input` 与 `--pin-input`。
+
+每次next/完成/finish重新核验输入、源、产物、事件hash和前置条件。变化使相关项及依赖返回待验证；仅因依赖回折的阶段在依赖恢复且回执仍可验证时自动回升通过（降级与回升均记入台账 `invalidation_history`/`revalidations`），计划修订显式要求的 preflight 重核（`recheck_required`）不被自动回升替代，需重新 stage-complete 才清除。旧回执保留。
 
 verify receipt另外必须提供至少一个 `--check /evidence/check/result.json`，来自 [run工具](TOOLS.md#可靠检查)，当前树、原退出码及日志hash均核验。实际产品路径、服务环境和模型质量仍需对应产物，空泛pass声明不能替代它们。独立阶段加 `--independent --reviewer-id <独立上下文ID>`，Standards与Spec必须不同上下文；字段是声明，独立性还须回查原始执行记录。
 
 reuse提供 `--reuse-check <当前适用性核验文件>`；所需组件仍须对应源。degraded、失败、unknown不能满足必需阶段。receipt输出路径不可重用，以便保留返工历史。
+
+阶段成本：`stage-complete --cost <json文件>` 可附调用者声明的该阶段成本——`tokens`/`duration_ms` 非负数、`basis` 必填（说明计量来源，如宿主 subagent 计量或会话读数），存入阶段 `costs` 并与完成时间戳一起保留历史；回执落成另记 `at` 时间戳。两者使下轮可按阶段分解墙钟与 token。声明不是工具观测，口径以 basis 自述为准，评审可核对。
 
 ## 修订、收口和副作用
 

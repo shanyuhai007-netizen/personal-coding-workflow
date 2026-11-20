@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import tempfile
 import time
 
@@ -130,7 +131,10 @@ def plan(args):
             set_dependencies(stages, rules)
             changed_plan_facts = old['facts'] != facts or old['goal'] != source['goal'] or old.get('conditions') != conditions
             if changed_plan_facts:
-                stage_by_id({'stages': stages}, 'preflight')['status'] = 'needs_verification'
+                preflight = stage_by_id({'stages': stages}, 'preflight')
+                preflight['status'] = 'needs_verification'
+                # A revision demands explicit re-verification; mechanical revalidation must not satisfy it.
+                preflight['recheck_required'] = True
             revisions = old['revisions'] + [{'reason': args.reason, 'goal': source['goal'], 'facts': facts, 'conditions': conditions, 'at': time.time()}]
             task = old
             task.update(stages=stages, revisions=revisions, facts=facts, goal=source['goal'], status='IN_PROGRESS')
@@ -164,14 +168,16 @@ def stage_by_id(task, name):
     return next(s for s in task['stages'] if s['id'] == name)
 
 
-def identity(task, stage, inputs):
+def identity(task, stage, inputs, pinned=None):
     value = {'files': {str(Path(p).resolve()): ev.sha(p) for p in inputs}}
+    if pinned:
+        value['pinned'] = pinned
     if stage.get('scope') == 'tree':
         value['tree'] = ev.code_tree(task['repo'])
     if stage['id'] in ('standards', 'spec-review', 'close'):
         value['acceptance'] = digest(task.get('acceptance'))
         value['conditions'] = digest(task.get('conditions'))
-    if not value['files'] and 'tree' not in value:
+    if not value['files'] and not value.get('pinned') and 'tree' not in value:
         raise ValueError('Stage needs relevant input files')
     return value
 
@@ -180,6 +186,9 @@ def verify_identity(task, value):
     for path, expected in value['files'].items():
         if ev.sha(path) != expected:
             raise ValueError('Changed stage input: ' + path)
+    for path, snapshot in value.get('pinned', {}).items():
+        if not Path(snapshot['path']).is_file() or ev.sha(snapshot['path']) != snapshot['sha256']:
+            raise ValueError('Pinned input snapshot missing or changed: ' + path)
     if 'tree' in value and ev.code_tree(task['repo']) != value['tree']:
         raise ValueError('Changed code tree')
     for key in ('conditions', 'acceptance'):
@@ -208,6 +217,8 @@ def verify_receipt(task, stage, receipt_path):
     refs = receipt['sources'] + receipt['artifacts']
     if receipt.get('observed_event_ref'):
         refs.append(receipt['observed_event_ref'])
+    if receipt.get('refile'):
+        refs.append(receipt['refile']['source_receipt'])
     for item in refs:
         ev.verify_artifact(receipt_path.parent, item)
     if stage['id'] == 'verify' and not receipt.get('checks'):
@@ -288,9 +299,8 @@ def verify_receipt(task, stage, receipt_path):
     return receipt
 
 
-def problems(task, stage):
-    if stage['status'] != 'passed':
-        return ['stage ' + stage['id'] + ' is ' + stage['status']]
+def receipt_problems(task, stage):
+    """Receipt-level verification only; independent of the stage status field."""
     try:
         receipts = [verify_receipt(task, stage, p) for p in stage['receipts']]
         needed = set(stage['required_obligations'] or ['output'])
@@ -306,15 +316,30 @@ def problems(task, stage):
         return [stage['id'] + ': ' + str(exc)]
 
 
+def problems(task, stage):
+    if stage['status'] != 'passed':
+        return ['stage ' + stage['id'] + ' is ' + stage['status']]
+    return receipt_problems(task, stage)
+
+
 def refresh(task):
     for stage in task['stages']:
+        deps = [s for s in task['stages'] if s['id'] in stage['depends_on']]
         if stage['status'] == 'passed':
-            errors = problems(task, stage)
-            deps = [s for s in task['stages'] if s['id'] in stage['depends_on']]
+            errors = receipt_problems(task, stage)
             if errors or any(s['status'] != 'passed' for s in deps):
+                reason = errors or ['Dependency changed']
                 stage['status'] = 'needs_verification'
-                stage['invalidated_reason'] = errors or ['Dependency changed']
+                stage['invalidated_reason'] = reason
+                stage.setdefault('invalidation_history', []).append({'at': time.time(), 'reason': reason})
                 task['status'] = 'IN_PROGRESS'
+        elif stage['status'] == 'needs_verification' and stage.get('receipts') and not stage.get('recheck_required'):
+            # A stage demoted only by a dependency failure still holds valid evidence
+            # once the dependency recovers; revalidate instead of forcing manual replay.
+            if all(s['status'] == 'passed' for s in deps) and not receipt_problems(task, stage):
+                stage['status'] = 'passed'
+                stage.pop('invalidated_reason', None)
+                stage.setdefault('revalidations', []).append({'at': time.time()})
     if task['stages'] and ac.problems(task) and task['status'] == 'VERIFIED':
         task['status'] = 'IN_PROGRESS'
 
@@ -357,6 +382,15 @@ def operate(args):
             raise ValueError('Operation outcome unknown; reconcile before retry or completion')
         if stage['attempts'] >= task['max_attempts']:
             raise ValueError('Stage budget exhausted; preserve evidence and resolve blocker')
+        cost = None
+        if getattr(args, 'cost', None):
+            cost = read(args.cost)
+            if not isinstance(cost, dict) or not str(cost.get('basis', '')).strip():
+                raise ValueError('Cost declaration needs a non-empty basis describing its measurement source')
+            for key in ('tokens', 'duration_ms'):
+                if key in cost and (type(cost[key]) not in (int, float) or cost[key] < 0):
+                    raise ValueError('Cost ' + key + ' must be a non-negative number')
+            cost = {key: cost[key] for key in ('tokens', 'duration_ms', 'basis', 'note') if key in cost}
         deps = [s for s in task['stages'] if s['id'] in stage['depends_on']]
         if any(s['status'] != 'passed' for s in deps):
             save(path, task)
@@ -371,6 +405,12 @@ def operate(args):
             errors = problems(task, stage)
             if errors:
                 raise ValueError('; '.join(errors))
+            stage.pop('recheck_required', None)
+            stage.setdefault('completions', []).append({'at': time.time()})
+            if cost is not None:
+                stage.setdefault('costs', []).append({'at': time.time(), **cost})
+            # One completion can recover dependencies; cascade revalidation immediately.
+            refresh(task)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             stage['receipts'] = old_receipts
             stage['attempts'] += 1
@@ -405,6 +445,26 @@ def receipt(args):
     stage = stage_by_id(task, args.stage)
     out = Path(args.out).resolve()
     ev.outside_repo(task['repo'], out)
+    if out.exists():
+        raise ValueError('Receipt already exists; preserve history with a new path')
+    inputs = [str(Path(p).resolve()) for p in args.input]
+    pins = [str(Path(p).resolve()) for p in args.pin_input]
+    overlap = sorted(set(inputs) & set(pins))
+    if overlap:
+        raise ValueError('Inputs are live-bound or pinned, not both: ' + ', '.join(overlap))
+    if len(set(pins)) != len(pins):
+        raise ValueError('Duplicate pinned inputs')
+    if pins and stage.get('scope') == 'tree':
+        # Final gates must keep binding the delivered tree; pinned snapshots would weaken that.
+        raise ValueError('Tree-scoped stages bind the full tree; inputs cannot be pinned here')
+    pinned = {}
+    if pins:
+        store = out.parent / (out.stem + '.inputs')
+        store.mkdir(parents=True, exist_ok=False)
+        for index, source in enumerate(pins):
+            target = store / (str(index) + '-' + Path(source).name)
+            shutil.copyfile(source, target)
+            pinned[source] = ev.artifact(target)
     event_ref = None
     if args.event:
         event_ref = ev.artifact(args.event)
@@ -420,18 +480,52 @@ def receipt(args):
                              stage['id'] + ' mode ' + args.mode + '; run component-event first or pass --event')
     data = {'task_id': task['task_id'], 'stage_id': stage['id'], 'obligation_id': args.obligation,
             'mode': args.mode, 'verification': args.verification, 'adaptation': args.adaptation,
-            'input_identity': identity(task, stage, args.input), 'sources': [ev.artifact(p) for p in args.source],
+            'input_identity': identity(task, stage, args.input, pinned),
+            'sources': [ev.artifact(p) for p in args.source],
             'checks': [ev.artifact(p) for p in args.check],
             'observed_event_ref': event_ref, 'artifacts': [ev.artifact(p) for p in args.artifact],
             'independent': args.independent, 'reviewer_id': args.reviewer_id,
+            'at': time.time(),
             'attestation': 'caller-declared; source/event hashes do not prove method quality'}
     if args.reuse_check:
         data['reuse_check'] = ev.artifact(args.reuse_check)
     if not args.adaptation.strip():
         raise ValueError('Adaptation is required')
     out.parent.mkdir(parents=True, exist_ok=True)
+    save(out, data)
+    print(out)
+    return 0
+
+
+def refile(args):
+    """Rebind a file-bound receipt to current hashes after a semantics-neutral change."""
+    task = load(args.record)
+    source_path = Path(args.receipt).resolve()
+    source = read(source_path)
+    if (source.get('task_id'), source.get('stage_id')) != (task['task_id'], args.stage):
+        raise ValueError('Receipt task/stage identity mismatch')
+    if not args.reason.strip():
+        raise ValueError('Refile needs an explicit reason for why semantics are unchanged')
+    stage = stage_by_id(task, args.stage)
+    if source.get('obligation_id') not in stage['required_obligations'] + ['output']:
+        raise ValueError('Unexpected obligation')
+    previous = source.get('input_identity')
+    if not previous or set(previous) - {'files', 'pinned'}:
+        raise ValueError('Only file-bound receipts can be refiled; tree/condition-bound work needs a fresh receipt')
+    files = {str(Path(p).resolve()): ev.sha(p) for p in previous['files']}
+    changed = sorted(path for path, value in files.items() if previous['files'][path] != value)
+    data = {key: value for key, value in source.items() if key not in ('input_identity', 'refile')}
+    identity_value = {'files': files}
+    if 'pinned' in previous:
+        identity_value['pinned'] = previous['pinned']
+    data['input_identity'] = identity_value
+    data['refile'] = {'source_receipt': ev.artifact(source_path), 'reason': args.reason.strip(),
+                      'changed_paths': changed, 'at': time.time()}
+    out = Path(args.out).resolve()
+    ev.outside_repo(task['repo'], out)
     if out.exists():
         raise ValueError('Receipt already exists; preserve history with a new path')
+    out.parent.mkdir(parents=True, exist_ok=True)
     save(out, data)
     print(out)
     return 0
@@ -554,6 +648,11 @@ def add_parsers(sub):
         if name == 'stage-complete':
             p.add_argument('--stage', required=True)
             p.add_argument('--receipt', action='append', required=True)
+            p.add_argument('--cost', help='Optional declared cost JSON: {tokens?, duration_ms?, basis}')
+    p = sub.add_parser('receipt-refile', help='Rebind a file-bound receipt to current hashes after a semantics-neutral change')
+    p.add_argument('record')
+    for name in ('receipt', 'stage', 'reason', 'out'):
+        p.add_argument('--' + name, required=True)
     p = sub.add_parser('stage-receipt')
     p.add_argument('record')
     for name in ('stage', 'obligation', 'out', 'adaptation'):
@@ -561,7 +660,7 @@ def add_parsers(sub):
     p.add_argument('--event', default='', help='Optional; auto-matches the latest registered success event when omitted')
     p.add_argument('--mode', choices=['native', 'read', 'reuse', 'degraded'], required=True)
     p.add_argument('--verification', choices=['pass', 'fail', 'unknown'], required=True)
-    for name in ('input', 'source', 'artifact', 'check'):
+    for name in ('input', 'pin-input', 'source', 'artifact', 'check'):
         p.add_argument('--' + name, action='append', default=[])
     p.add_argument('--independent', action='store_true')
     p.add_argument('--reviewer-id', default='')
@@ -581,4 +680,6 @@ def dispatch(args):
         return plan(args)
     if args.command == 'stage-receipt':
         return receipt(args)
+    if args.command == 'receipt-refile':
+        return refile(args)
     return operate(args)

@@ -585,6 +585,172 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn('No registered success event', missing.stderr)
 
+    def preflight_receipt(self, name, inputs=(), pins=()):
+        """Preflight receipt with caller-chosen live and pinned inputs."""
+        proof = self.root / (name + '-proof.md')
+        proof.write_text('Synthetic preflight trace over fixture inputs.\n')
+        out = self.root / (name + '.json')
+        args = ['stage-receipt', self.record, '--stage', 'preflight', '--obligation', 'output',
+                '--mode', 'read', '--verification', 'pass', '--adaptation', 'synthetic pc contract',
+                '--artifact', proof, '--out', out]
+        for value in inputs:
+            args += ['--input', value]
+        for value in pins:
+            args += ['--pin-input', value]
+        self.assertEqual(self.cli(*args).returncode, 0)
+        return out
+
+    def test_pinned_inputs_survive_intended_modification_and_tampering_fails(self):
+        self.assertEqual(self.plan(behavior_change=True).returncode, 0)
+        out = self.preflight_receipt('preflight-pinned', pins=[self.repo / 'app.txt'])
+        receipt = json.loads(out.read_text())
+        (origin, snapshot), = receipt['input_identity']['pinned'].items()
+        self.assertEqual(origin, str((self.repo / 'app.txt').resolve()))
+        self.assertEqual(Path(snapshot['path']).parent.name, 'preflight-pinned.inputs')
+        self.assertEqual(self.cli('stage-complete', self.record, '--stage', 'preflight',
+                                  '--receipt', out).returncode, 0)
+        # The task's own planned edit no longer demotes the early receipt.
+        (self.repo / 'app.txt').write_text('intended task modification\n')
+        self.assertEqual(self.cli('next', self.record, '--json').returncode, 0)
+        self.assertEqual(self.state()['stages'][0]['status'], 'passed')
+        # The sealed bytes are the evidence; tampering with the snapshot fails.
+        Path(snapshot['path']).write_text('tampered\n')
+        self.assertEqual(self.cli('next', self.record, '--json').returncode, 0)
+        self.assertEqual(self.state()['stages'][0]['status'], 'needs_verification')
+
+    def test_pin_input_is_rejected_for_tree_scopes_and_double_binding(self):
+        self.assertEqual(self.plan(behavior_change=True).returncode, 0)
+        (self.root / 'proof.md').write_text('Synthetic trace.\n')
+        result = self.cli('stage-receipt', self.record, '--stage', 'verify', '--obligation', 'output',
+                          '--mode', 'read', '--verification', 'pass', '--adaptation', 'synthetic',
+                          '--artifact', self.root / 'proof.md', '--input', self.repo / 'app.txt',
+                          '--pin-input', self.root / 'facts.json', '--out', self.root / 'verify-pin.json')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Tree-scoped', result.stderr)
+        result = self.cli('stage-receipt', self.record, '--stage', 'preflight', '--obligation', 'output',
+                          '--mode', 'read', '--verification', 'pass', '--adaptation', 'synthetic',
+                          '--artifact', self.root / 'proof.md', '--input', self.repo / 'app.txt',
+                          '--pin-input', self.repo / 'app.txt', '--out', self.root / 'double.json')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('not both', result.stderr)
+        self.assertFalse((self.root / 'double.json').exists())
+
+    def test_receipt_refile_rebinds_hashes_and_promotes_demoted_dependents(self):
+        self.assertEqual(self.plan(unfamiliar_api=True).returncode, 0)
+        self.assertIn('research', {s['id'] for s in self.state()['stages']})
+        preflight = self.preflight_receipt('preflight-live', inputs=[self.repo / 'app.txt'])
+        self.assertEqual(self.cli('stage-complete', self.record, '--stage', 'preflight',
+                                  '--receipt', preflight).returncode, 0)
+        research = self.make_receipt('research', 'research')
+        self.assertEqual(self.cli('stage-complete', self.record, '--stage', 'research',
+                                  '--receipt', research).returncode, 0)
+        # A semantics-neutral edit invalidates preflight (live input) and cascades to research.
+        (self.repo / 'app.txt').write_text('reflowed fixture\n')
+        self.assertEqual(self.cli('next', self.record, '--json').returncode, 0)
+        statuses = {s['id']: s['status'] for s in self.state()['stages']}
+        self.assertEqual(statuses['preflight'], 'needs_verification')
+        self.assertEqual(statuses['research'], 'needs_verification')
+        refiled = self.root / 'preflight-refiled.json'
+        result = self.cli('receipt-refile', self.record, '--receipt', preflight, '--stage', 'preflight',
+                          '--reason', 'comment reflow only; verified facts unchanged', '--out', refiled)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        new_receipt, old_receipt = json.loads(refiled.read_text()), json.loads(preflight.read_text())
+        self.assertEqual(new_receipt['refile']['changed_paths'], [str((self.repo / 'app.txt').resolve())])
+        self.assertEqual(new_receipt['refile']['source_receipt']['sha256'],
+                         hashlib.sha256(preflight.read_bytes()).hexdigest())
+        for key in ('task_id', 'stage_id', 'obligation_id', 'mode', 'verification', 'adaptation',
+                    'sources', 'artifacts', 'at'):
+            self.assertEqual(new_receipt[key], old_receipt[key])
+        completed = self.cli('stage-complete', self.record, '--stage', 'preflight', '--receipt', refiled)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        # The dependent stage revalidated mechanically; no manual receipt replay needed.
+        statuses = {s['id']: s for s in self.state()['stages']}
+        self.assertEqual(statuses['preflight']['status'], 'passed')
+        self.assertEqual(statuses['research']['status'], 'passed')
+        self.assertTrue(statuses['research'].get('revalidations'))
+        self.assertTrue(statuses['research'].get('invalidation_history'))
+
+    def test_receipt_refile_rejects_tree_bindings_missing_inputs_and_blank_reasons(self):
+        self.assertEqual(self.plan(behavior_change=True).returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        check = self.root / 'verify-check'
+        self.assertEqual(self.cli('run', '--out', check, '--', sys.executable, '-c',
+                                  'print("fixture")').returncode, 0)
+        verify_receipt = self.root / 'verify-1.json'
+        result = self.cli('stage-receipt', self.record, '--stage', 'verify', '--obligation', 'output',
+                          '--mode', 'read', '--verification', 'pass', '--adaptation', 'synthetic',
+                          '--artifact', self.root / 'proof.md', '--input', self.repo / 'app.txt',
+                          '--check', check / 'result.json', '--out', verify_receipt)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        refile = self.cli('receipt-refile', self.record, '--receipt', verify_receipt, '--stage', 'verify',
+                          '--reason', 'comment reflow', '--out', self.root / 'verify-2.json')
+        self.assertNotEqual(refile.returncode, 0)
+        self.assertIn('file-bound', refile.stderr)
+        gone = self.preflight_receipt('preflight-gone', inputs=[self.repo / 'app.txt'])
+        (self.repo / 'app.txt').unlink()
+        missing = self.cli('receipt-refile', self.record, '--receipt', gone, '--stage', 'preflight',
+                           '--reason', 'file removed', '--out', self.root / 'gone.json')
+        self.assertNotEqual(missing.returncode, 0)
+        blank = self.cli('receipt-refile', self.record,
+                         '--receipt', self.state()['stages'][0]['receipts'][0], '--stage', 'preflight',
+                         '--reason', '   ', '--out', self.root / 'blank.json')
+        self.assertNotEqual(blank.returncode, 0)
+        self.assertIn('reason', blank.stderr)
+
+    def test_plan_revision_recheck_is_not_satisfied_by_mechanical_revalidation(self):
+        self.assertEqual(self.plan(behavior_change=True).returncode, 0)
+        # Preflight binds only app.txt, so a goal-only revision leaves its hashes intact.
+        preflight = self.preflight_receipt('preflight-goal', inputs=[self.repo / 'app.txt'])
+        self.assertEqual(self.cli('stage-complete', self.record, '--stage', 'preflight',
+                                  '--receipt', preflight).returncode, 0)
+        path = self.root / 'facts.json'
+        facts = json.loads(path.read_text())
+        facts['goal'] = 'Revised goal with the same facts'
+        path.write_text(json.dumps(facts))
+        revised = self.cli('plan', '--facts', path, '--record', self.record,
+                           '--reason', 'User sharpened the goal wording')
+        self.assertEqual(revised.returncode, 0, revised.stderr)
+        self.assertEqual(self.state()['stages'][0]['status'], 'needs_verification')
+        self.assertTrue(self.state()['stages'][0]['recheck_required'])
+        # Repeated mechanical revalidation must not silently satisfy the recheck.
+        self.assertEqual(self.cli('next', self.record, '--json').returncode, 0)
+        self.assertEqual(self.state()['stages'][0]['status'], 'needs_verification')
+        # Explicit re-verification clears the recheck flag.
+        refiled = self.root / 'preflight-goal-2.json'
+        self.assertEqual(self.cli('receipt-refile', self.record, '--receipt', preflight,
+                                  '--stage', 'preflight', '--reason', 'goal wording only',
+                                  '--out', refiled).returncode, 0)
+        self.assertEqual(self.cli('stage-complete', self.record, '--stage', 'preflight',
+                                  '--receipt', refiled).returncode, 0)
+        self.assertNotIn('recheck_required', self.state()['stages'][0])
+
+    def test_stage_complete_records_declared_costs_and_rejects_malformed_ones(self):
+        self.assertEqual(self.plan().returncode, 0)
+        preflight = self.make_receipt('preflight')
+        cost = self.root / 'cost.json'
+        cost.write_text(json.dumps({'tokens': 1200, 'duration_ms': 3400,
+                                    'basis': 'subagent timing.json totals'}))
+        result = self.cli('stage-complete', self.record, '--stage', 'preflight',
+                          '--receipt', preflight, '--cost', cost)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stage = self.state()['stages'][0]
+        self.assertEqual(stage['costs'][-1]['tokens'], 1200)
+        self.assertEqual(stage['costs'][-1]['basis'], 'subagent timing.json totals')
+        self.assertIn('at', stage['costs'][-1])
+        self.assertTrue(stage['completions'])
+        for bad in ({'tokens': -5, 'basis': 'x'}, {'tokens': 5}, {'tokens': 'many', 'basis': 'x'}):
+            with self.subTest(bad=bad):
+                path = self.root / ('bad-cost-' + str(len(list(self.root.glob('bad-cost-*.json')))) + '.json')
+                path.write_text(json.dumps(bad))
+                document = self.make_receipt('document')
+                failed = self.cli('stage-complete', self.record, '--stage', 'document',
+                                  '--receipt', document, '--cost', path)
+                self.assertNotEqual(failed.returncode, 0)
+                self.assertIn('Cost', failed.stderr)
+                stage = {s['id']: s for s in self.state()['stages']}['document']
+                self.assertFalse(stage.get('costs'))
+                self.assertEqual(stage['attempts'], 0)
+
 
 if __name__ == '__main__':
     unittest.main()
