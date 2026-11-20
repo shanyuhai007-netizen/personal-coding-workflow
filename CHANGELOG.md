@@ -1,5 +1,9 @@
 # 版本记录
 
+## 0.4.17 — 2026-11-20
+
+- 登记 interrogate 并接 verify 可选义务（缺口事实：两轴评审放行后、由独立核验才抓到实质问题的案例已两例，共同模式是评审把交付者自述当事实放行、未对声明本身做对抗验证——按既定决策规则「第二实例出现即立项」；且阶段组件此前全必需，workflow.py 四处严格相等锁定，把对抗评审接成必需义务会令每次 nontrivial 任务强制多轴对抗，实测成本不可接受；证据存本地评测工作区，不入库）：引擎（a96b200）先行放宽四处严格相等——stage-complete、回执复核、receipt-refile、component-event 统一接受「必需集精确覆盖 ∪ 额外回执 ⊆ optional_components、无重复、degraded 不满足任何义务」的合法集，未配置 optional_components 的规则字节不变、行为不变。本批登记 interrogate（[pstack](https://github.com/cursor/plugins/tree/main/pstack) `skills/interrogate/SKILL.md`，上游 `disable-model-invocation: true`；许可随上游——pstack 子目录自带 MIT LICENSE、上游仓库 license 字段为 null，2026-11-20 实测核实；只登记引用，不捆绑任何第三方内容）并接线 verify `optional_components: ["interrogate"]`：执行则回执与必需同校验（身份、mode、adaptation、verification=pass），不执行不产生义务缺口；上游 disable-model-invocation 语义保持——计划路径不自动触发，接线只给用户显式调用的执行一个阶段回执挂载点。COMPONENTS 新增登记行并在双模式定性段写明接线与 frontmatter 定性的关系；ADAPTERS 新增 pc-0.3 适配行（对手 = cross-CLI reviewers，保存原始输出与 CLI/版本身份；每对手独立 worktree、repro 留在对手 worktree；对抗 brief 核心纪律逐字保留上游原文——"Prove each finding with a run against the real code… Leave out anything you did not run… No findings is a valid result."；verify 口径逐条重跑命令、同根因合并、记 dropped 计数；只报告不修复，发现进 WORKFLOW §5 修复循环）；ROUTING 补可选义务组件路由句；manifest 词表测试同步。规则 hash 变化，在途任务按 EXECUTION 迁移限制处理（旧规则完成或显式 replan）。新增 1 项回归测试（生产规则 verify 可选槽在 plan/next 存在、无 interrogate 回执不阻塞），默认规则集测试更新为仅 verify 可选、其余阶段保持全必需，合计 78 项全绿。安装副本内容变化，递增补丁版重装三份。
+
 ## 0.4.16 — 2026-11-20
 
 对照三方方法论（Matt 27 skills、poteto verification-skill-example、ECC 6 skills、pstack 58 skills + 22 playbooks 全量逐个阅读，三轮调研 + 两轮把关复核）的准确性批次，全部 P0：
