@@ -1,5 +1,9 @@
 # 版本记录
 
+## 0.4.19 — 2026-11-20
+
+- 修正 0.4.18 探查委派适配行的用词错位：无只读子上下文能力时「记独立性受限」改为「记能力受限」——「独立性受限」在本仓词表中专指评审独立语境（WORKFLOW §5.5、ZCODE.md），探查委派的收益是 context 减压而非独立性，借用该词会误读为存在未满足的独立性义务（2026-11-20 ask-matt 把关发现）。纯用词修正，无行为变化，83 项既有测试全绿。安装副本内容变化，递增补丁版重装三份。
+
 ## 0.4.18 — 2026-11-20
 
 - 适配 exploration subagent 委派（缺口事实：上游 implement-spec SKILL.md 步骤 2 的 exploration subagent——探查笔记存仓库外共享目录、让实施子上下文专注实现——此前未被 ADAPTERS implement/implement-spec 适配行覆盖，WORKFLOW §1「查事实/探查现状」默认主线程执行，大范围代码库扫读的压力全落在主上下文；2026-11-20 对照 ask-matt/PHASE-BOUNDARIES.md 及上游 implement-spec、code-review 原文复核确认）：ADAPTERS implement/implement-spec 适配行上游步骤补「探查」，执行侧补三条——代码库内探查委派只读子上下文（宿主映射：ZCode 内置 Explore agent、Claude Code Explore 子代理，以会话实际能力为准）；探查笔记存仓库外共享目录供后续子上下文复用、主线程只收结论与指针，笔记归档按 WORKFLOW §5.6 记 hash 指针；无只读子上下文能力时主线程串行探查并记独立性受限。纯文档适配，不改 workflow_rules.json、无规则 hash 变化、无新测试；83 项既有测试全绿。安装副本内容变化，递增补丁版重装三份。
