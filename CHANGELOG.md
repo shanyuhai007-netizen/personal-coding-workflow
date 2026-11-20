@@ -1,5 +1,9 @@
 # 版本记录
 
+## 0.4.15 — 2026-11-20
+
+- UI 运行交互验证接入规则（缺口事实：VISUAL「纯静态截图盲区交给运行交互验证，不以豁免替代」与 verify done_when「交互路径有实际观察」两条义务早已存在，但 workflow_rules 无任何阶段消费 `interaction` 事实——该事实自声明起即为死钩子、全仓零消费；且回执校验按阶段 components 严格相等、拒绝未列义务名，散文点名永远进不了回执机制）：新增 `interaction-verify` 阶段（intents=implement + all[interaction]，components=[web-gui-tester]，after implement/visual-build），并接线进 verify 与 visual-review 的 after——后者补齐 DAG 缺口：critic 消费的截图正是 interaction-verify 的产物，浏览器操作主 agent 专用（control-browser 子 agent 禁用）决定截图只能产自主 agent 阶段。web-gui-tester 为方法论层（原文自声明「用会话实际提供的任何浏览器工具运行、工具规则优先」），工具层按宿主登记（2026-11-20 实测）：ZCode browser-use 插件原生、Claude Code 本机 browser CDP 脚本包（playwright-mcp 未配置、可选另装）、Codex 未配置须实测；无可用工具记 degraded、交互条件保持未验并保留手动复验步骤。`interaction` 定义落 VISUAL（涉及可运行页面实际交互为 true，纯静态微调 false），EXECUTION 前端事实核对句同步加 interaction；ADAPTERS 新增适配行（测试/修复分离 vs WORKFLOW §5 修复循环——受阻路径跳过沿用、缺陷进修复循环不必等 P0-P3 走完；P3 布局/样式发现移交视觉流程不重复评审；环境准备操作报告中申报、真实服务写入前按授权停）并升 pc-0.3；COMPONENTS 登记 web-gui-tester 外部 skill 行与宿主工具层行，manifest 词表测试同步。新增 2 项回归测试（interaction 门控 + verify/visual-review 依赖接线 + 缺回执拒 finish；无事实不激活），既有 UI 用例断言扩展 web-gui-tester，合计 66 项全绿。安装副本内容变化，递增补丁版重装三份。
+
 ## 0.4.14 — 2026-11-20
 
 - 回折成本两招（iteration-2 报告 §四.2：回折/失效在 6/6 with run 普遍发生，B 型＝早期回执绑定了任务预定修改的文件——B-w-1 三阶段失效原因均为 index.html 变化，整批机械重录实测 <1min；A 型＝依赖级联——A-w-3 连锁 3 阶段）：① `stage-receipt --pin-input` 在回执落成时把预定修改对象的字节副本封存进 `<回执名>.inputs/`，身份绑定快照而非活文件——预期修改不再使早期回执待验证，快照被改动即失效；tree 绑定阶段（verify、两轴评审、close）不接受 pin，同一文件不得同时 live 与 pin。② 新子命令 `receipt-refile`：file 绑定回执在语义未变仅 hash 变化时以当前 hash 重发，其余字段逐字复制、封存源回执 hash 并记录变更路径，agent 只确认语义；tree/条件绑定的失效必须重做对应工作。③ 依赖级联回升：仅因依赖回折的阶段在依赖恢复且回执仍可验证时自动回升通过（降级与回升均记入 `invalidation_history`/`revalidations`，替代原「整批机械重放 stage-complete」的手工恢复）；计划修订显式要求的 preflight 重核以 `recheck_required` 标记，不被自动回升替代，重新 stage-complete 才清除。

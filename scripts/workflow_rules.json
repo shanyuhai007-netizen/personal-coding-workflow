@@ -287,6 +287,26 @@
       ]
     },
     {
+      "id": "interaction-verify",
+      "goal": "在实际运行的界面中操作并验证交互",
+      "when": {
+        "intents": [
+          "implement"
+        ],
+        "all": [
+          "interaction"
+        ]
+      },
+      "components": [
+        "web-gui-tester"
+      ],
+      "done_when": "关键交互路径在运行界面有实际操作记录，截图与测试报告可追溯",
+      "after": [
+        "implement",
+        "visual-build"
+      ]
+    },
+    {
       "id": "visual-review",
       "goal": "独立比较最终界面并完成交付审计",
       "when": {
@@ -304,7 +324,8 @@
       "after": [
         "implement",
         "visual-build",
-        "visual-direction"
+        "visual-direction",
+        "interaction-verify"
       ],
       "scope": "tree",
       "independent": true
@@ -323,7 +344,8 @@
       "after": [
         "implement",
         "document",
-        "visual-review"
+        "visual-review",
+        "interaction-verify"
       ]
     },
     {

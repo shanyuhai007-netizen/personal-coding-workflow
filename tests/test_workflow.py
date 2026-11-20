@@ -43,7 +43,7 @@ class WorkflowTests(unittest.TestCase):
         facts.update({k: {'value': v, 'evidence': 'synthetic fixture contract'} for k, v in features.items()})
         path = self.root / 'facts.json'
         sources = {}
-        for name in ('tdd', 'code-review', 'grilling', 'research', 'diagnosing-bugs', 'modern-web-guidance', 'vercel-react-best-practices', 'ui-taste-loop', 'frontend-design'):
+        for name in ('tdd', 'code-review', 'grilling', 'research', 'diagnosing-bugs', 'modern-web-guidance', 'vercel-react-best-practices', 'ui-taste-loop', 'frontend-design', 'web-gui-tester'):
             source = self.root / (name + '.md')
             source.write_text('Synthetic ' + name + ' source.\n')
             sources[name] = str(source)
@@ -62,7 +62,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         stages = self.state()['stages']
         required = {c for s in stages for c in s['components']}
-        self.assertTrue({'modern-web-guidance', 'vercel-react-best-practices', 'tdd', 'code-review'} <= required)
+        self.assertTrue({'modern-web-guidance', 'vercel-react-best-practices', 'tdd', 'code-review', 'web-gui-tester'} <= required)
         result = self.cli('finish', self.record)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('preflight', result.stderr)
@@ -71,6 +71,22 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)['id'], 'preflight')
         self.assertNotEqual(self.state()['status'], 'VERIFIED')
 
+    def test_interaction_stage_gates_on_fact_and_wires_dependencies(self):
+        result = self.plan(behavior_change=True, ui=True, visual_change=True, interaction=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stages = {s['id']: s for s in self.state()['stages']}
+        self.assertEqual(stages['interaction-verify']['required_obligations'], ['web-gui-tester'])
+        self.assertIn('interaction-verify', stages['verify']['depends_on'])
+        self.assertIn('interaction-verify', stages['visual-review']['depends_on'])
+        finish = self.cli('finish', self.record)
+        self.assertNotEqual(finish.returncode, 0)
+        self.assertIn('interaction-verify', finish.stderr)
+
+    def test_interaction_stage_absent_without_fact(self):
+        result = self.plan(behavior_change=True, ui=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ids = {s['id'] for s in self.state()['stages']}
+        self.assertNotIn('interaction-verify', ids)
 
     def test_visual_only_work_has_direction_build_and_final_visual_gate(self):
         result = self.plan(ui=True, visual_change=True)

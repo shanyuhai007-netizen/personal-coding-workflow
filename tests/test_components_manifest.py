@@ -14,7 +14,7 @@ EXTERNAL_SKILLS = (
     'triage', 'wayfinder', 'domain-modeling', 'grill-with-docs',
     'improve-codebase-architecture',
     'modern-web-guidance', 'vercel-react-best-practices', 'web-design-guidelines',
-    'frontend-design', 'emil-design-eng', 'ui-taste-loop',
+    'frontend-design', 'emil-design-eng', 'ui-taste-loop', 'web-gui-tester',
 )
 
 

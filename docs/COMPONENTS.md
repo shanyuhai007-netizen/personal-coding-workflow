@@ -15,6 +15,8 @@
 | frontend-design | 外部 skill | Anthropic claude-plugins-official frontend-design 插件 | visual-direction |
 | emil-design-eng | 外部 skill | Emil Kowalski 作者官方仓 [emilkowalski/skills](https://github.com/emilkowalski/skills)（MIT）；本机副本为早期快照，落后上游 main | 新 UI 方向打磨，按需 |
 | ui-taste-loop | 外部 skill | [自维护外部仓](https://github.com/shanyuhai007-netizen/ui-taste-loop)；适配 pc-visual-1，见 [视觉适配](VISUAL.md)，当前效果仍需真实 UI 票验证 | visual-direction / visual-review |
+| web-gui-tester | 外部 skill | ZCode 官方插件市场 zcode-plugins-official browser-use 0.3.0（本机缓存）；方法论跨宿主——原文要求用会话实际提供的浏览器工具运行、工具自身规则优先，本机原文路径 `~/.zcode/cli/plugins/cache/zcode-plugins-official/browser-use/0.3.0/skills/web-gui-tester/SKILL.md`，其他宿主按 read 跨目录复用、不复制版本。步骤适配 pc-0.3 | interaction-verify |
+| 浏览器自动化工具层（control-browser 等） | 宿主工具 | ZCode：browser-use 插件原生（node_repl 驱动，主 agent 专用、子 agent 禁用）；Claude Code：本机 `~/.claude/skills/browser` CDP 脚本包（playwright-mcp 未配置，可选另装）；Codex：未配置，原生能力须实测（2026-11-20 核）。无可用工具时 interaction-verify 记 degraded 并保留手动复验步骤 | interaction-verify 工具层（非流程组件，不单独回执） |
 | fact-review（独立事实核验） | 内部程序 | WORKFLOW「完成条件先于实施」一节 + EXECUTION 独立回执（`--independent`）；不引用外部组件 | fact-review |
 
 来源与许可以 npm registry 元数据及 GitHub 仓库 license 核实（2026-11-19）；登记不以推测填充，发现新的缺口时先标记再补证。

@@ -4,7 +4,7 @@
 
 ## 触发与范围
 
-每个前端任务明确判断并记录 `ui` 与 `visual_change`，不得因可选事实默认 false 而漏填。`ui` 表示 HTML/CSS/客户端 JS；`visual_change` 表示新建用户界面或改变布局、字体、配色、视觉组件。纯逻辑任务为 false。已有页面补视觉验收仍为 true，即使 implementation_complete=true。
+每个前端任务明确判断并记录 `ui`、`visual_change` 与 `interaction`，不得因可选事实默认 false 而漏填。`ui` 表示 HTML/CSS/客户端 JS；`visual_change` 表示新建用户界面或改变布局、字体、配色、视觉组件；`interaction` 表示改动涉及可运行页面的实际交互（点击、输入、导航、状态反馈），纯静态文案或样式微调为 false。纯逻辑任务均为 false。已有页面补视觉验收仍为 true，即使 implementation_complete=true。interaction=true 时 interaction-verify 阶段在 verify 前以宿主浏览器自动化实际操作，产出截图与测试报告。
 
 局部视觉修复也进入视觉阶段，但方向与现有合格证据可核验后 reuse；只检查影响范围，不强制重做全站。未变动的业务状态沿用证据须核对当前适用性。
 
@@ -29,6 +29,8 @@ Phase 3 减法、AI Tells 与适用 Copy Audit 在最终证据固定前完成。
 ## 工具与证据
 
 先查当前工具清单与已安装技能目录；当前端目录缺组件时，继续查本机其他宿主的技能根目录，找到可读原文可按 read 复用，不为跨端使用复制独立版本。在 component_sources 注册实际可读 ui-taste-loop 与 frontend-design 原文路径。宿主无原生接口但文件可读时按 read 执行，不能声称原生发现。无截图、视觉输入或独立上下文能力则记录限制，必要视觉条件保持未满足。
+
+截图采集与运行交互验证优先使用宿主浏览器自动化，工具层清单见 [COMPONENTS](COMPONENTS.md)；浏览器操作限主 agent 执行，不派子 agent。interaction=true 时 interaction-verify 按 web-gui-tester 方法论驱动，其测试报告与截图经 [TOOLS](TOOLS.md) archive 归档后作为 acceptance 观测证据，critic 复用其截图；interaction=false 的视觉任务仍需运行界面截图，用同一宿主浏览器能力采集。无浏览器能力时 interaction-verify 记 degraded，交互条件保持未验并保留手动复验步骤。
 
 impeccable 使用已验证版本、明确扫描目标，保存原命令/退出码/日志及例外。检测通过仅证明所扫规则未发现对应问题，不代表高品味；扫描不可执行时显式记录替代审计和失去的保障。以真实运行版本核对退出码含义，不硬编码上游规则数量。
 
