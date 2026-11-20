@@ -339,7 +339,12 @@
           "implement"
         ]
       },
-      "components": [],
+      "components": [
+        "interrogate"
+      ],
+      "optional_components": [
+        "interrogate"
+      ],
       "scope": "tree",
       "done_when": "适用成功/失败/交互/恢复路径有实际观察",
       "after": [

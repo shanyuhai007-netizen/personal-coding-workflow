@@ -834,16 +834,41 @@ class WorkflowTests(unittest.TestCase):
                 self.assertFalse(stage.get('costs'))
                 self.assertEqual(stage['attempts'], 0)
 
-    def test_default_ruleset_keeps_all_components_required(self):
-        # The production rule set declares no optional_components: behavior stays as before.
+    def test_default_ruleset_keeps_components_required_except_verify(self):
+        # The production rule set wires exactly one optional component (interrogate on
+        # verify); every other stage keeps all components required, as before.
         result = self.plan(behavior_change=True, ui=True, react=True, interaction=True,
                            nontrivial=True, unfamiliar_api=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         stages = self.state()['stages']
         self.assertTrue(stages)
         for stage in stages:
-            self.assertEqual(stage['required_obligations'], stage['components'])
-            self.assertEqual(stage['optional_obligations'], [])
+            if stage['id'] == 'verify':
+                self.assertEqual(stage['components'], ['interrogate'])
+                self.assertEqual(stage['required_obligations'], [])
+                self.assertEqual(stage['optional_obligations'], ['interrogate'])
+            else:
+                self.assertEqual(stage['required_obligations'], stage['components'])
+                self.assertEqual(stage['optional_obligations'], [])
+
+    def test_verify_optional_interrogate_slot_from_production_rules(self):
+        # Production rules wire interrogate as verify's optional obligation: the slot
+        # shows up in plan/next, and skipping it opens no obligation gap.
+        self.assertEqual(self.plan().returncode, 0)
+        verify = {s['id']: s for s in self.state()['stages']}['verify']
+        self.assertEqual(verify['components'], ['interrogate'])
+        self.assertEqual(verify['required_obligations'], [])
+        self.assertEqual(verify['optional_obligations'], ['interrogate'])
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        self.assertEqual(self.complete('document').returncode, 0)
+        result = self.cli('next', self.record, '--json')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['id'], 'verify')
+        self.assertEqual(json.loads(result.stdout)['optional_obligations'], ['interrogate'])
+        # An output receipt alone completes verify: no interrogate receipt blocks nothing.
+        self.assertEqual(self.complete('verify').returncode, 0)
+        self.assertEqual({s['id']: s for s in self.state()['stages']}['verify']['status'], 'passed')
+
 
     def optional_scripts(self, required=('research', 'diagnosing-bugs'), optional=('grilling',)):
         """Copied rule set declaring optional components on research; production rule bytes stay untouched."""

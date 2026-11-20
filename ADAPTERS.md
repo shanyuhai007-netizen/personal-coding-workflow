@@ -27,8 +27,9 @@
 | research：后台研究并写文件 | 只在事实缺口存在时加载；按原文要求使用独立研究上下文 | 必需来源无法访问且用户持有材料 |
 | retro / handoff：另行询问或切会话 | 在阶段边界写简短环境改进 / 接续状态；已有记录足够就继续 | 真正需要跨目录、工具或人接管 |
 | web-gui-tester：测试宣布完成前不改代码；P0-P3 顺序计划；环境准备可改配置/注入会话 | 受阻路径记录并跳过沿用；发现的缺陷进入 WORKFLOW §5 修复循环并复跑受影响验证，不必等 P0-P3 全走完；P3 布局/样式发现移交视觉流程（critic、web-design-guidelines）不重复评审；环境准备操作在最终报告中申报，真实服务写入前按授权规则停；interaction-verify 另受 doctor 前置与三条全程不变量约束（意外后重跑 doctor、证据 cleanup 后原位核验、失败残留必清），见 [视觉专项](docs/VISUAL.md) | 登录凭据、测试涉及真实数据写入（支付/下单/删除）等 skill 自身要求确认的场景 |
+| interrogate：对手尝试搞坏变更，只有被 run 证明的 finding 存活；只报告不修复 | 对手 = cross-CLI reviewers（`codex exec` / `claude -p` 造独立上下文，本地评测已有实测先例（2026-11-19 记录）；保存原始输出与 CLI/版本身份）；每对手独立 worktree、repro 留在对手 worktree（WORKFLOW §4 隔离）；对抗 brief 核心纪律逐字保留上游原文——"Prove each finding with a run against the real code… Leave out anything you did not run… No findings is a valid result."；verify 口径：逐条重跑命令，finding 存活 = 输出显示失败且失败破坏 intent，同根因合并，记 dropped 计数；只报告不修复，发现进 WORKFLOW §5 修复循环；回执挂 verify 可选槽（optional_components 接线，不执行不产生义务缺口） | 对手运行触及真实凭据、费用或生产数据时按授权规则停 |
 
-调用方式定性：上游 skill 的可调用性以其 frontmatter 为准（逐项登记与统计见 [组件清单](docs/COMPONENTS.md)）。带 `disable-model-invocation: true` 的仅在用户显式调用时按上表适配执行，计划路径（workflow_rules 阶段 components）不为它们产生组件义务——与上游设计一致，非缺陷；其余可模型调用，其中未接线的同样不产生组件义务。用户显式调用与计划路径组件共用上表适配，不因调用来源放宽或收紧步骤。
+调用方式定性：上游 skill 的可调用性以其 frontmatter 为准（逐项登记与统计见 [组件清单](docs/COMPONENTS.md)）。带 `disable-model-invocation: true` 的仅在用户显式调用时按上表适配执行，计划路径不为它们产生必需组件义务——与上游设计一致，非缺陷（interrogate 经 optional_components 接线进 verify 可选槽，接线不改变触发定性）；其余可模型调用，其中未接线的同样不产生组件义务。用户显式调用与计划路径组件共用上表适配，不因调用来源放宽或收紧步骤。
 
 组件未安装：记录实际检索目录 / 名称；有参考原文可读时用 read 并执行。既无源又无原生接口时写 degraded，执行 WORKFLOW.md 对应步骤并记录限制。独立评审不可用时可做第二遍自查但标明独立性有限；项目硬性要求独立评审时不能判完成。
 
