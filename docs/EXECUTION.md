@@ -60,6 +60,8 @@ reuse提供 `--reuse-check <当前适用性核验文件>`；所需组件仍须�
 
 阶段成本：`stage-complete --cost <json文件>` 可附调用者声明的该阶段成本——`tokens`/`duration_ms` 非负数、`basis` 必填（说明计量来源，如宿主 subagent 计量或会话读数），存入阶段 `costs` 并与完成时间戳一起保留历史；回执落成另记 `at` 时间戳。两者使下轮可按阶段分解墙钟与 token。声明不是工具观测，口径以 basis 自述为准，评审可核对。
 
+finish 收口另补任务级双口径总账，通常挂 close 阶段、走同一 `--cost` 机制：主会话读数优先 agent 自读宿主留存的当前会话逐调用 usage 末值（如 ZCode model-io 记录，会话身份取 task 记录 host.session_id 或该目录最新文件）；无留存、路径失效或口径不明时向用户索取界面读数，basis 分别写明来源（如「ZCode model-io 末值」/「用户会话读数」）。子上下文（subagent）消耗由 agent 汇总各子上下文 transcript 的逐调用 usage（basis 如「ZCode subagent transcript 汇总」，会话身份同上）。两条口径都读不到时如实记 unavailable，不估数——路径是宿主实现细节，basis 自述使失效可查。成本是记账纪律不是完成条件，finish 不因缺成本拒绝，但收口报告注明缺项与口径。
+
 ## 修订、收口和副作用
 
 范围变化后更新facts，重新plan并提供 `--reason`。阶段义务取并集，修订不能静默删除欠项；原始facts与理由保留。规则hash变化必须显式迁移记录；当前版本不支持自动规则迁移，使用原版本完成旧任务，或另建计划明确核验复用旧成果。
