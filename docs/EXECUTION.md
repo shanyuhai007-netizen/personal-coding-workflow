@@ -33,6 +33,8 @@ python3 scripts/evidence.py next /evidence/task.json --json
 
 显示目标、修订号、阶段、所需组件、出口和状态；详细身份留JSON。next选择依赖齐备的首项；必要业务澄清不阻塞独立research。多单元的真实票依赖图留spec，工具不调度独立票组。已有实现仍先核验，适用时用reuse满足对应阶段，不能重新施工。预算耗尽保持受阻，继续其他已就绪项。修复根因并保留证明后，可用 `stage-resume --stage <id> --reason <具体修复> --proof <复验依据>` 开启唯一一次新的有限重试周期；旧失败次数保留在attempt_history。再次耗尽后需新任务及重新审查范围，不可继续清零重试。
 
+多票批量（一次会话收尾多张独立票，如「做完当前 open issues」）不按票各建台账，用单份 facts 承载整批：goal 写明批次范围，conditions 按票前缀分组（如 `56-1`、`47-2`），source 各指向对应原票条件的本地快照；异构票（修复 / 调查 / 功能混批）facts 取并集并在 evidence 注明混合依据，观测逐条件归位，finish 按全部条件收口。计划落成即按 [CONTEXT.md](CONTEXT.md) 多票默认编排执行——已批票多于一张时逐票实施子上下文、worktree 隔离、共享 seam 的票按依赖串行。批量入口缺这一形状时，会话容易整体绕开台账另做手工收口（2026-11-22 实测：4 票收尾会话未建账，证据散落无状态机）；不要因票多而弃账，形状不合适就修订 facts 而不是绕开。
+
 台账与证据目录放在仓外的持久位置：系统临时目录（/tmp、$TMPDIR 等）会被定期清理，`plan` 与 `finish` 拒绝此类路径；项目同级 `.personal-coding-evidence/` 或 `~/.local/state/personal-coding/<repo>/<task>/` 是可用约定。合成测试以 `PERSONAL_CODING_ALLOW_VOLATILE_RECORD=1` 显式豁免。
 
 ## 记录执行与阶段出口
