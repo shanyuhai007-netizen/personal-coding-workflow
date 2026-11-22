@@ -11,4 +11,4 @@ description: 在开发项目中收到任何编码执行请求时启用：修 bug
 
 接入新项目或当前工具缺少能力时，读取 [ADAPTERS.md](ADAPTERS.md)；组件的性质与来源以 [COMPONENTS](docs/COMPONENTS.md) 清单为准。项目契约与任务记录分别使用 [PROJECT.template.md](PROJECT.template.md)、[TASK.template.md](TASK.template.md) 的结构，并优先沿用项目已有等价文件。
 
-本入口不授予外发、生产操作或额外工具权限。缺少组件时先记录具体查找或限制证据，再按 ADAPTERS.md 降级；必要未验条件保留未满足状态。
+按[副作用对账](docs/EXECUTION.md#副作用对账)沿用已有授权，分别处理跟踪、提交与发布。缺少组件时先记录具体查找或限制证据，再按 ADAPTERS.md 降级；必要未验条件保留未满足状态。

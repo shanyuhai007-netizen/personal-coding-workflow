@@ -78,6 +78,52 @@ class HookTests(unittest.TestCase):
         self.assertEqual(self.hook('Stop', cwd=str(self.root)).returncode, 0)
         self.assertEqual(self.hook('Stop', session_id='different-session').returncode, 2)
 
+    def test_one_complete_component_read_covers_both_ready_review_axes(self):
+        self.assertEqual(self.plan(intent='review').returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        self.assertEqual(self.accept().returncode, 0)
+        source = self.root / 'code-review.md'
+        proof = self.root / 'manual-proof.txt'
+        proof.write_text('Manual component loading record')
+        result = self.cli('component-event', self.record, '--stage', 'standards',
+                          '--obligation', 'code-review', '--source', source, '--proof', proof,
+                          '--mode', 'read', '--status', 'success')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.hook('SessionStart', source='startup').returncode, 0)
+        self.assertIn('manual events cannot replace', self.cli('review-input', self.record, '--stage', 'standards').stderr)
+        result = self.hook('PostToolUse', tool_name='Read', tool_input={'file_path': str(source)},
+                           tool_response={'filePath': str(source), 'content': source.read_text()})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for axis in ('standards', 'spec-review'):
+            result = self.cli('review-input', self.record, '--stage', axis)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)['stage_id'], axis)
+        source.write_text('Updated component source')
+        self.assertIn('differs from current source', self.cli('review-input', self.record, '--stage', 'spec-review').stderr)
+
+    def read_delivery_workflow(self, **extra):
+        path = HOOK.parents[1] / 'WORKFLOW.md'
+        event = {'filePath': str(path), 'content': path.read_text()}
+        event.update(extra)
+        return self.hook('PostToolUse', tool_name='Read', tool_input={'file_path': str(path)}, tool_response=event)
+
+    def test_delivery_requires_complete_read_after_finish_in_current_session(self):
+        contract.WorkflowTests.test_short_document_path_recovers_across_processes_and_finishes(self)
+        command = {'tool_name': 'Bash', 'tool_input': {'command': 'git commit -m fixture'}}
+        self.assertIn('read the complete', self.hook('PreToolUse', **command).stderr)
+        self.assertEqual(self.read_delivery_workflow(truncated=True).returncode, 0)
+        self.assertEqual(self.hook('PreToolUse', **command).returncode, 2)
+        self.assertEqual(self.read_delivery_workflow().returncode, 0)
+        self.assertEqual(self.hook('PreToolUse', **command).returncode, 0)
+        result = self.cli('plan', '--facts', self.root / 'facts.json', '--record', self.record,
+                          '--reason', 'Resume the same accepted scope')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.cli('finish', self.record).returncode, 0)
+        self.assertIn('read the complete', self.hook('PreToolUse', **command).stderr)
+        self.assertEqual(self.read_delivery_workflow().returncode, 0)
+        self.assertEqual(self.hook('SessionStart', source='resume', session_id='new-session').returncode, 0)
+        self.assertEqual(self.hook('PreToolUse', session_id='new-session', **command).returncode, 2)
+
     def test_push_requires_recorded_external_authorization(self):
         self.assertEqual(self.plan().returncode, 0)
         for stage in ('preflight', 'document', 'verify', 'close'):
@@ -93,6 +139,7 @@ class HookTests(unittest.TestCase):
         task['external_actions']['push'] = {'status': 'authorized', 'evidence': {
             'path': str(proof), 'sha256': hashlib.sha256(proof.read_bytes()).hexdigest()}}
         self.record.write_text(json.dumps(task))
+        self.assertEqual(self.read_delivery_workflow().returncode, 0)
         self.assertEqual(self.hook('PreToolUse', tool_name='Bash', tool_input={'command': 'git push origin main'}).returncode, 0)
 
     def test_compound_command_requires_each_external_action_authorization(self):

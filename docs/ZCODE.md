@@ -25,7 +25,7 @@
 
 PostToolUse精确匹配注册的Read源路径，并核对工具返回路径、完整内容hash和truncated标记；失败、错路径、内容不符或截断都不能记为成功。非目标同名文件不计。加载事件包含对应就绪阶段的身份，无法归属时stage_id为null，不可用于阶段完成。工具参数/返回结构超出已支持范围时不能假定成功识别。当前自动观察Read；native Skill接口尚未验证，因此启用适配后必须通过Read原文路径完成组件义务；无法产生匹配host事件的方式会保持欠项。ZCode观察已启用后，组件receipt必须引用同任务、同session的宿主事件；手工声明不能替代。
 
-Stop和匹配到的Bash `git commit/push`、`gh pr create/merge`会核验必需项及finish状态；缺项exit2并反馈具体动作。push和PR操作还要求task.external_actions对应通道具备授权记录；仅本地VERIFIED不算外发授权。普通错误不等同成功阻断；应查rejection日志和宿主响应。已通过的任务重验当前输入，恢复后有效收口才放行。外发仍须独立授权，hook放行不授予权限。
+Stop和匹配到的Bash `git commit/push`、`gh pr create/merge`会核验必需项及finish状态；缺项exit2并反馈具体动作。push和PR操作还要求task.external_actions对应通道具备授权记录；仅本地VERIFIED不算外发授权。普通错误不等同成功阻断；应查rejection日志和宿主响应。已通过的任务重验当前输入。受管交付命令还需要 finish 后同一会话完整 Read 安装包的 WORKFLOW.md，读取记录绑定当时的验收身份。恢复或验收变更后重新读取。Stop 只核对收口结果。外发仍须独立授权，hook放行不授予权限。
 
 ## 独立性分级
 

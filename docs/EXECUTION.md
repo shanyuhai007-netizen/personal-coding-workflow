@@ -4,7 +4,7 @@
 
 ## 建立计划
 
-首次读取 [规则源](../scripts/workflow_rules.json)，将相关事实及依据写入 facts.json。台账面向 WORKFLOW.md 全路径任务；满足其小改硬判据的轻量任务不建 facts、计划与回执，保留检查日志和验证性本地提交即可，判据失守再进入本节流程。没有提供的可选布尔事实按 false 处理，所以 Agent 必须复核遗漏；goal 是原请求的具体目标。component_sources 是实际可读的规范组件路径，不能指向另一目录中的同名文件。实际文件存在不表示宿主有原生调用能力。接续已有完整实现时明确填 `existing_implementation` 与 `implementation_complete`，计划会核验当前树并跳过implement，只补缺失的验收/评审；事实本身仍需在preflight核验。
+首次读取 [规则源](../scripts/workflow_rules.json)，将相关事实及依据写入 facts.json。台账面向 WORKFLOW.md 全路径任务；满足其小改硬判据的轻量任务不建 facts、计划与回执，保留检查日志和验证性本地提交即可，判据失守再进入本节流程。没有提供的可选布尔事实按 false 处理，所以 Agent 必须复核遗漏；goal 是原请求的具体目标。 推翻、替换或实质改写既有 ADR 或设计契约时填 `formal_decision=true`，即使任务入口是 bug 修复。以旧 ADR 和复现证据为依据，在写新 ADR 或实现前完成计划生成的 `fact-review`。修补 ADR 错字、链接或忠实执行已批准决定沿用原事实。实施中才发现设计反转时先 replan，再继续该阶段。component_sources 是实际可读的规范组件路径，不能指向另一目录中的同名文件。实际文件存在不表示宿主有原生调用能力。接续已有完整实现时明确填 `existing_implementation` 与 `implementation_complete`，计划会核验当前树并跳过implement，只补缺失的验收/评审；事实本身仍需在preflight核验。
 
 ```json
 {
@@ -39,7 +39,7 @@ python3 scripts/evidence.py next /evidence/task.json --json
 
 ## 记录执行与阶段出口
 
-先执行阶段方法并核验产物。组件事件采用JSON：`task_id, stage_id, component, source, mode, status`；status只能成功事件才用success。宿主观察器生成的事件还保存session/tool身份、原始载荷指针。手工整理的read事件必须注明其声明性质，不能称宿主自动观察。native/read事件检查任务、阶段、组件、模式及规范源路径；这些字段仍不是防伪签名。
+阶段就绪时先读取完整组件原文或从宿主原生调用，立即保留加载记录。执行阶段后保存实际产物并登记回执。组件事件采用JSON：`task_id, stage_id, component, source, mode, status`；status只能成功事件才用success。宿主观察器生成的事件还保存session/tool身份、原始载荷指针。手工整理的read事件必须注明其声明性质，不能称宿主自动观察。native/read事件检查任务、阶段、组件、模式及规范源路径；这些字段仍不是防伪签名。
 
 ```sh
 python3 scripts/evidence.py component-event /evidence/task.json --stage implement --obligation tdd --mode read --source /skills/tdd/SKILL.md --proof /evidence/red-green.md --status success
@@ -62,7 +62,7 @@ reuse提供 `--reuse-check <当前适用性核验文件>`；所需组件仍须�
 
 阶段成本：`stage-complete --cost <json文件>` 可附调用者声明的该阶段成本——`tokens`/`duration_ms` 非负数、`basis` 必填（说明计量来源，如宿主 subagent 计量或会话读数），存入阶段 `costs` 并与完成时间戳一起保留历史；回执落成另记 `at` 时间戳。两者使下轮可按阶段分解墙钟与 token。声明不是工具观测，口径以 basis 自述为准，评审可核对。
 
-finish 收口另补任务级双口径总账，通常挂 close 阶段、走同一 `--cost` 机制：主会话读数优先 agent 自读宿主留存的当前会话逐调用 usage 末值（如 ZCode model-io 记录，会话身份取 task 记录 host.session_id 或该目录最新文件）；无留存、路径失效或口径不明时向用户索取界面读数，basis 分别写明来源（如「ZCode model-io 末值」/「用户会话读数」）。子上下文（subagent）消耗由 agent 汇总各子上下文 transcript 的逐调用 usage（basis 如「ZCode subagent transcript 汇总」，会话身份同上）。两条口径都读不到时如实记 unavailable，不估数——路径是宿主实现细节，basis 自述使失效可查。成本是记账纪律不是完成条件，finish 不因缺成本拒绝，但收口报告注明缺项与口径。
+close 阶段按来源分别记录 `last_request`、`main_total`、`child_total`，每项采用 `{"tokens": 数量, "basis": "来源、会话或回合范围、是否含缓存输入"}`。末值反映末次请求大小，主会话累计对任务覆盖的逐请求用量求和。子上下文返回时先保存该回合用量和原始记录指针，再发送继续消息，防止宿主覆盖 transcript。缺数据的口径在收口写 unavailable；已有 `tokens` 仍可用于单阶段计量，混合总数不能补齐缺项。
 
 ## 修订、收口和副作用
 
@@ -72,7 +72,7 @@ finish 收口另补任务级双口径总账，通常挂 close 阶段、走同一
 python3 scripts/evidence.py finish /evidence/task.json
 ```
 
-仅所有必需阶段及下节原始条件的有效观测齐备时写VERIFIED。未运行finish时，已启用的 [ZCode适配](ZCODE.md) 会在Stop反馈缺项；其他端无此自动保障。外部授权单独记录，不由VERIFIED授予。原始兼容命令validate只校验v0.2记录，不具备义务覆盖或宿主约束，不能代替新计划收口。
+仅所有必需阶段及下节原始条件的有效观测齐备时写VERIFIED。 交付前按 [WORKFLOW §5](../WORKFLOW.md#5-验证评审与修复) 重读并核对最终树。启用 ZCode 适配时，交付命令另核验 finish 后同会话对已安装 WORKFLOW.md 的完整读取。未运行finish时，已启用的 [ZCode适配](ZCODE.md) 会在Stop反馈缺项；其他端无此自动保障。外部授权单独记录，不由VERIFIED授予。原始兼容命令validate只校验v0.2记录，不具备义务覆盖或宿主约束，不能代替新计划收口。
 
 ## 原始条件与逐项观测
 
@@ -102,13 +102,19 @@ python3 scripts/evidence.py finish /evidence/task.json
 
 acceptance 只登记观测及当前完整树，不授予完成；缺项可先登记，finish 逐项拒绝缺失、失败或未知条件。工具自动保存报告/证据 hash、原条件及树身份；原文、证据或代码变化使旧观测失效。修订条件必须 replan 并写具体 reason，历史保留前后投影；同标签改写也需重新核验。观测变化会让两轴评审和 close 待验证，最终报告在评审前固定，返工后更新并复审。
 
-收口直接展示每项条件、行为、目标版本/实例/环境、观察、证据及剩余动作。树身份只能证明对应的本地代码；部署版本、真实服务实例和样本范围由原始证据及 reviewer 核对。只要求本地修复时 target 使用约定本地实例；生产发布状态单列。原请求要求生产故障消失时保留该条件，未复验不能以本地测试替代。
+收口直接展示每项条件、行为、目标版本/实例/环境、观察、证据及剩余动作。 通过数从对应日志提取，归属以 `run` 的 `tree_before` / `tree_after` 为准。两者均与交付树一致时才列为终树检查。文件数从最终评审快照对应的 base→tree Git 差异重算，采用相同重命名口径。树身份只能证明对应的本地代码；部署版本、真实服务实例和样本范围由原始证据及 reviewer 核对。只要求本地修复时 target 使用约定本地实例；生产发布状态单列。原请求要求生产故障消失时保留该条件，未复验不能以本地测试替代。
 
-评审材料按 [评审输入](../ADAPTERS.md#评审输入) 提供相关原始证据。结构与 hash 校验不证明观察真实或结论足够，检查日志全绿也不能独自证明全部原始目标达成。
+评审材料按 [评审输入](../ADAPTERS.md#评审输入) 提供相关原始证据。登记各就绪评审轴的组件加载后，运行 `review-input <task.json> --stage standards|spec-review`，把返回的 JSON 连同实际验收报告、日志与快照交给 reviewer。由 reviewer 输出 JSON，含原样的 `reviewed` 对象、该独立上下文的 `reviewer_id`、`verdict` 和非空 `assessment`，说明所核验的原始证据及结论。归档原始输出，`stage-receipt --review <reviewer.json>` 用其绑定当前验收、条件及树。相同代码树上的验收变化由原 reviewer 核对增量并出新报告。原 reviewer 无法继续时，另请独立 reviewer 对完整材料重审，在报告中写 `"scope": "full"` 和具体 `replacement_reason`。保留初评及增量原文。从早期版本接续时，缺独立报告绑定的两轴回执需补做复核。结构与 hash 校验不证明观察真实或结论足够，检查日志全绿也不能独自证明全部原始目标达成。
 
 ## 副作用对账
 
-真实副作用执行前，先确认授权并将单独授权凭据写入外部动作记录，再用 `operation task.json --stage close --operation-id <稳定操作身份> --result begin` 持久记录unknown。发生回执丢失时先查实际产物和远端操作身份，`--result applied|not_applied --proof <对账文件>`。工具本身不执行副作用；同身份不能再次begin，unknown阻止finish。对账后如需重试，必须确认幂等性/实际未执行，使用可追溯的新操作身份；不能因异常盲重试。
+检查项目的 [发布授权表](../RELEASE.template.md) 与宿主权限。本地 commit 遵循已授权工作及仓库规则。Issue 的建、评、关各自沿用覆盖目标仓库和内容的现有授权，与 push 分开处理。push、部署与公开外发各自按适用的显式授权执行。授权依据留在动作记录，用户规则和发布限制优先。
+
+对可能发生回执丢失的动作，执行前用 `operation task.json --stage close --operation-id <稳定操作身份> --result begin` 持久记录 unknown。查到实际产物后，提交 `--result applied|not_applied --proof <对账文件>`；unknown 阻止 finish，重复 begin 被拒。需要重试时先确认未应用和幂等性，再使用可追溯的新操作身份。已执行且没有 begin 记录的动作（如收口后的本地提交或后续会话已完成的跟踪动作），可凭提交对象、工单快照等持久证据用 `--result applied --late --proof <凭据>` 补录。补录保留登记时间和已有 VERIFIED，命令仅记账。
+
+[ZCode 受管交付命令](ZCODE.md#配置与验证) 先完成 finish 与交付读取，再执行已授权动作。宿主已在执行前保存原始命令事件；确认实际结果后凭证补录。若结果不明，检查提交对象或远端实际状态，仍无法确认时登记 unknown 后暂停重试。该路径以宿主的执行前记录衔接事后对账，避免预先登记 unknown 触发同一个交付闸门。
+
+收口时，把交付声明中延期的工作逐条交给 `finish --follow-ups <json>`。每项填 `id`、`summary`，追踪位置填实际工单 URL 或含项目身份的工单号 `ticket`，也可填已 applied 且凭据可核验的 `operation_id`。缺落点时 finish 单列未跟踪项，本地验收状态仍按原条件判定。超出授权时先留本地记录，外部动作按授权推进。
 
 工具不保护恶意改写记录，也不证明所有自然语言技能要求。新增特殊义务需项目契约和适用规则共同复核，规则覆盖之外的硬条件仍保持未满足。
 

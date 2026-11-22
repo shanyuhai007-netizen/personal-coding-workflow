@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import tempfile
 import time
@@ -202,6 +203,7 @@ def identity(task, stage, inputs, pinned=None):
         value['tree'] = ev.code_tree(task['repo'])
     if stage['id'] in ('standards', 'spec-review', 'close'):
         value['acceptance'] = digest(task.get('acceptance'))
+        value['acceptance_revision'] = len(task.get('acceptance_history', []))
         value['conditions'] = digest(task.get('conditions'))
     if not value['files'] and not value.get('pinned') and 'tree' not in value:
         raise ValueError('Stage needs relevant input files')
@@ -220,6 +222,109 @@ def verify_identity(task, value):
     for key in ('conditions', 'acceptance'):
         if key in value and value[key] != digest(task.get(key)):
             raise ValueError('Changed ' + key + '; recheck review/closure inputs')
+    if 'acceptance_revision' in value and value['acceptance_revision'] != len(task.get('acceptance_history', [])):
+        raise ValueError('Changed acceptance revision; recheck review/closure inputs')
+
+
+REVIEW_AXES = ('standards', 'spec-review')
+
+
+def review_input(task, stage):
+    if stage['id'] not in REVIEW_AXES:
+        raise ValueError('Select a Standards or Spec review stage')
+    if any(stage_by_id(task, dep)['status'] != 'passed' for dep in stage['depends_on']):
+        raise ValueError('Complete review dependencies first')
+    errors = ac.problems(task)
+    if errors:
+        raise ValueError('Record current acceptance before review: ' + '; '.join(errors))
+    return {'task_id': task['task_id'], 'stage_id': stage['id'],
+            'tree': task['acceptance']['tree'], 'acceptance': digest(task['acceptance']),
+            'acceptance_revision': len(task.get('acceptance_history', [])),
+            'conditions': digest(task['conditions'])}
+
+
+def verify_review(task, stage, receipt, parent):
+    if not receipt.get('review'):
+        raise ValueError('Independent reviewer report required; pass --review with the reviewer output')
+    ref = receipt['review']
+    ev.verify_artifact(parent, ref)
+    report = read(ev.resolve_file(parent, ref['path']))
+    current = review_input(task, stage)
+    if not isinstance(report, dict):
+        raise ValueError('Reviewer report must be a JSON object')
+    if (report.get('reviewed') != current
+            or any(receipt['input_identity'].get(key) != current[key]
+                   for key in ('tree', 'acceptance', 'acceptance_revision', 'conditions'))):
+        raise ValueError('Reviewer report does not bind current review inputs; request an independent recheck')
+    if (report.get('reviewer_id') != receipt['reviewer_id'] or report.get('verdict') != 'pass'
+            or not isinstance(report.get('assessment'), str) or not report['assessment'].strip()):
+        raise ValueError('Reviewer report needs the matching reviewer identity, passing verdict, and assessment')
+    prior = stage.get('last_review', {})
+    if (prior.get('tree') == report['reviewed']['tree']
+            and (prior.get('acceptance') != current['acceptance']
+                 or prior.get('acceptance_revision') != current['acceptance_revision'])
+            and prior.get('reviewer_id') != report['reviewer_id']):
+        reason = report.get('replacement_reason')
+        if not isinstance(reason, str) or not reason.strip() or report.get('scope') != 'full':
+            raise ValueError('Acceptance-only changes need the original reviewer or a documented full replacement review')
+
+
+def verify_component_event(task, stage, obligation, mode, ref, parent, expected):
+    if not ref:
+        raise ValueError('Component obligation requires an observed event; register one or recreate the receipt')
+    ev.verify_artifact(parent, ref)
+    event = read(ev.resolve_file(parent, ref['path']))
+    if not isinstance(event, dict):
+        raise ValueError('Component event must be a JSON object')
+    event_path = str(ev.resolve_file(parent, ref['path']).resolve())
+    if event_path not in {str(Path(value).resolve()) for value in task['events']}:
+        raise ValueError('Component event is not registered to this task')
+    if (event.get('task_id'), event.get('stage_id'), event.get('component'), event.get('mode'), event.get('status')) != (task['task_id'], stage['id'], obligation, mode, 'success'):
+        raise ValueError('A successful component event bound to this task/stage/mode is required')
+    if event.get('observer') not in ('zcode_hook', 'agent_declared'):
+        raise ValueError('Component event observer is unsupported')
+    if mode == 'native' and event.get('observer') != 'zcode_hook':
+        raise ValueError('Native mode requires a host-observed event')
+    if task['host']['status'] == 'events_observed' and event.get('observer') != 'zcode_hook':
+        raise ValueError('This task has host observation enabled; manual events cannot replace it')
+    if event.get('observer') == 'zcode_hook':
+        binding = read(Path(task['record_path'] + '.events') / 'binding.json')
+        sessions = set(binding.get('previous_sessions', [])) | {binding['session_id']}
+        if event.get('session_id') not in sessions:
+            raise ValueError('Component event session is not bound to this task')
+        raw_ref = event['raw_event_ref']
+        ev.verify_artifact(parent, raw_ref)
+        raw_event = read(ev.resolve_file(parent, raw_ref['path']))
+        if not isinstance(raw_event, dict):
+            raise ValueError('Raw host event must be a JSON object')
+        raw_name = raw_event.get('hook_event_name', raw_event.get('hookEventName'))
+        raw_session = raw_event.get('session_id', raw_event.get('sessionId'))
+        raw_tool = raw_event.get('tool_name', raw_event.get('toolName'))
+        raw_input = raw_event.get('tool_input', raw_event.get('toolInput', {}))
+        raw_response = raw_event.get('tool_response', raw_event.get('toolResponse', {}))
+        raw_path = raw_input.get('file_path') if isinstance(raw_input, dict) else None
+        response_path = raw_response.get('filePath', raw_response.get('file_path')) if isinstance(raw_response, dict) else None
+        response_content = raw_response.get('content') if isinstance(raw_response, dict) else None
+        raw_path = Path(raw_path or '')
+        response_path = Path(response_path or '')
+        if not raw_path.is_absolute():
+            raw_path = Path(task['repo']) / raw_path
+        if not response_path.is_absolute():
+            response_path = Path(task['repo']) / response_path
+        if (raw_name != 'PostToolUse' or raw_session != event['session_id'] or raw_tool != 'Read'
+                or str(raw_path.resolve()) != str(Path(expected).resolve())
+                or str(response_path.resolve()) != str(Path(expected).resolve())
+                or not isinstance(response_content, str)
+                or hashlib.sha256(response_content.encode('utf-8')).hexdigest() != event['source_hash']
+                or any(raw_response.get(key) is True for key in ('isError', 'is_error', 'truncated'))):
+            raise ValueError('Raw host event does not prove a complete read of this component source')
+    if event.get('observer') == 'agent_declared':
+        ev.verify_artifact(parent, event['execution_proof'])
+    if str(Path(event.get('source', '')).resolve()) != str(Path(expected).resolve()):
+        raise ValueError('Component event source identity mismatch')
+    if event.get('source_hash') != ev.sha(expected):
+        raise ValueError('Component event source hash differs from current source')
+    return event
 
 
 def verify_receipt(task, stage, receipt_path):
@@ -241,8 +346,6 @@ def verify_receipt(task, stage, receipt_path):
         raise ValueError('Original conditions and acceptance identity required; recheck legacy review/closure')
     verify_identity(task, receipt['input_identity'])
     refs = receipt['sources'] + receipt['artifacts']
-    if receipt.get('observed_event_ref'):
-        refs.append(receipt['observed_event_ref'])
     if receipt.get('refile'):
         refs.append(receipt['refile']['source_receipt'])
     for item in refs:
@@ -260,7 +363,7 @@ def verify_receipt(task, stage, receipt_path):
             raise ValueError('Failed or stale verification check')
         if check['output_sha256'] != ev.sha(check_path.parent / 'output.log'):
             raise ValueError('Check output changed')
-    if not receipt['artifacts']:
+    if not receipt['artifacts'] and not receipt.get('review'):
         raise ValueError('Verified stage needs output artifacts')
     if receipt['obligation_id'] != 'output':
         expected = task.get('component_sources', {}).get(receipt['obligation_id'])
@@ -268,58 +371,17 @@ def verify_receipt(task, stage, receipt_path):
         if not expected or str(Path(expected).resolve()) not in actual:
             raise ValueError('Target component canonical source identity missing')
         if receipt['mode'] in ('native', 'read', 'reuse'):
-            if not receipt.get('observed_event_ref'):
-                raise ValueError('Component obligation requires an observed event; register one or recreate the receipt')
-            event = read(ev.resolve_file(receipt_path.parent, receipt['observed_event_ref']['path']))
-            event_path = str(ev.resolve_file(receipt_path.parent, receipt['observed_event_ref']['path']).resolve())
-            if event_path not in {str(Path(value).resolve()) for value in task['events']}:
-                raise ValueError('Component event is not registered to this task')
-            if (event.get('task_id'), event.get('stage_id'), event.get('component'), event.get('mode'), event.get('status')) != (task['task_id'], stage['id'], receipt['obligation_id'], receipt['mode'], 'success'):
-                raise ValueError('A successful component event bound to this task/stage/mode is required')
-            if event.get('observer') not in ('zcode_hook', 'agent_declared'):
-                raise ValueError('Component event observer is unsupported')
-            if receipt['mode'] == 'native' and event.get('observer') != 'zcode_hook':
-                raise ValueError('Native mode requires a host-observed event')
-            if task['host']['status'] == 'events_observed' and event.get('observer') != 'zcode_hook':
-                raise ValueError('This task has host observation enabled; manual events cannot replace it')
-            if event.get('observer') == 'zcode_hook':
-                binding = read(Path(task['record_path'] + '.events') / 'binding.json')
-                sessions = set(binding.get('previous_sessions', [])) | {binding['session_id']}
-                if event.get('session_id') not in sessions:
-                    raise ValueError('Component event session is not bound to this task')
-                raw_ref = event['raw_event_ref']
-                ev.verify_artifact(receipt_path.parent, raw_ref)
-                raw_event = read(ev.resolve_file(receipt_path.parent, raw_ref['path']))
-                raw_name = raw_event.get('hook_event_name', raw_event.get('hookEventName'))
-                raw_session = raw_event.get('session_id', raw_event.get('sessionId'))
-                raw_tool = raw_event.get('tool_name', raw_event.get('toolName'))
-                raw_input = raw_event.get('tool_input', raw_event.get('toolInput', {}))
-                raw_response = raw_event.get('tool_response', raw_event.get('toolResponse', {}))
-                raw_path = raw_input.get('file_path') if isinstance(raw_input, dict) else None
-                response_path = raw_response.get('filePath', raw_response.get('file_path')) if isinstance(raw_response, dict) else None
-                response_content = raw_response.get('content') if isinstance(raw_response, dict) else None
-                raw_path = Path(raw_path or '')
-                response_path = Path(response_path or '')
-                if not raw_path.is_absolute():
-                    raw_path = Path(task['repo']) / raw_path
-                if not response_path.is_absolute():
-                    response_path = Path(task['repo']) / response_path
-                if (raw_name != 'PostToolUse' or raw_session != event['session_id'] or raw_tool != 'Read'
-                        or str(raw_path.resolve()) != str(Path(expected).resolve())
-                        or str(response_path.resolve()) != str(Path(expected).resolve())
-                        or not isinstance(response_content, str)
-                        or hashlib.sha256(response_content.encode('utf-8')).hexdigest() != event['source_hash']
-                        or raw_response.get('truncated') is True):
-                    raise ValueError('Raw host event does not prove a complete read of this component source')
-            if event.get('observer') == 'agent_declared':
-                ev.verify_artifact(receipt_path.parent, event['execution_proof'])
-            if str(Path(event.get('source', '')).resolve()) != str(Path(expected).resolve()):
-                raise ValueError('Component event source identity mismatch')
+            event = verify_component_event(task, stage, receipt['obligation_id'], receipt['mode'],
+                                           receipt.get('observed_event_ref'), receipt_path.parent, expected)
             if event.get('source_hash') not in {source['sha256'] for source in receipt['sources']
                                                 if str(ev.resolve_file(receipt_path.parent, source['path']).resolve()) == str(Path(expected).resolve())}:
                 raise ValueError('Component event source hash differs from captured source')
     if stage.get('independent') and (receipt['independent'] is not True or not receipt['reviewer_id'].strip()):
         raise ValueError('Independent reviewer required')
+    if stage['id'] in REVIEW_AXES:
+        verify_review(task, stage, receipt, receipt_path.parent)
+    elif receipt.get('review'):
+        raise ValueError('Reviewer report applies only to Standards and Spec')
     if receipt['mode'] == 'reuse':
         if not receipt.get('reuse_check'):
             raise ValueError('Reuse needs applicability verification')
@@ -396,14 +458,20 @@ def operate(args):
             if ev.volatile(path):
                 save(path, task)
                 raise ValueError('Record location is periodically purged; VERIFIED evidence would not persist')
+            if args.follow_ups:
+                task['follow_ups'] = capture_follow_ups(args.follow_ups)
             missing = (ac.problems(task) if task['stages'] else []) + ['operation ' + k + ' remains unknown; reconcile before retry' for k, v in task.get('operations', {}).items() if v['status'] == 'unknown'] + [p for s in task['stages'] for p in problems(task, s)]
             if missing:
                 save(path, task)
                 raise ValueError('Missing requirements; complete/verify: ' + '; '.join(missing))
+            if task['status'] != 'VERIFIED':
+                task.pop('delivery_read', None)
             task['status'] = 'VERIFIED' if task['stages'] else 'ANSWER_ONLY'
             save(path, task)
             print(task['status'] + ': record consistency only; external actions require separate authorization')
             print(ac.summary(task))
+            for item in task.get('follow_ups', []):
+                print(f"Follow-up {item['id']} | {item['summary']} | " + follow_up_status(task, item))
             return 0
         stage = stage_by_id(task, args.stage)
         if any(v['stage_id'] == stage['id'] and v['status'] == 'unknown' for v in task.get('operations', {}).values()):
@@ -418,7 +486,15 @@ def operate(args):
             for key in ('tokens', 'duration_ms'):
                 if key in cost and (type(cost[key]) not in (int, float) or cost[key] < 0):
                     raise ValueError('Cost ' + key + ' must be a non-negative number')
-            cost = {key: cost[key] for key in ('tokens', 'duration_ms', 'basis', 'note') if key in cost}
+            for key in ('last_request', 'main_total', 'child_total'):
+                if key in cost:
+                    metric = cost[key]
+                    if (not isinstance(metric, dict) or type(metric.get('tokens')) is not int
+                            or metric['tokens'] < 0 or not isinstance(metric.get('basis'), str)
+                            or not metric['basis'].strip()):
+                        raise ValueError('Cost ' + key + ' needs non-negative integer tokens and its own basis')
+            keys = ('tokens', 'duration_ms', 'basis', 'note', 'last_request', 'main_total', 'child_total')
+            cost = {key: cost[key] for key in keys if key in cost}
         deps = [s for s in task['stages'] if s['id'] in stage['depends_on']]
         if any(s['status'] != 'passed' for s in deps):
             save(path, task)
@@ -434,6 +510,11 @@ def operate(args):
             if errors:
                 raise ValueError('; '.join(errors))
             stage.pop('recheck_required', None)
+            if stage['id'] in REVIEW_AXES:
+                reviewed = receipts[0]
+                stage['last_review'] = {key: reviewed['input_identity'][key]
+                                        for key in ('tree', 'acceptance', 'acceptance_revision')}
+                stage['last_review']['reviewer_id'] = reviewed['reviewer_id']
             stage.setdefault('completions', []).append({'at': time.time()})
             if cost is not None:
                 stage.setdefault('costs', []).append({'at': time.time(), **cost})
@@ -462,10 +543,27 @@ def latest_event(task, stage, obligation, mode):
             event = read(value)
         except (OSError, ValueError):
             continue
-        if (event.get('task_id'), event.get('stage_id'), event.get('component'),
+        if isinstance(event, dict) and (event.get('task_id'), event.get('stage_id'), event.get('component'),
                 event.get('mode'), event.get('status')) == (task['task_id'], stage['id'], obligation, mode, 'success'):
             match = ev.artifact(value)
     return match
+
+
+def check_component_load(task, stage, obligation, parent):
+    expected = task.get('component_sources', {}).get(obligation)
+    if expected:
+        errors = []
+        for mode in ('read', 'native', 'reuse'):
+            ref = latest_event(task, stage, obligation, mode)
+            if ref:
+                try:
+                    verify_component_event(task, stage, obligation, mode, ref, parent, expected)
+                    return
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    errors.append(str(exc))
+        if errors:
+            raise ValueError('Invalid component load for ' + obligation + ': ' + '; '.join(errors))
+    raise ValueError('Load and record ' + obligation + ' before dispatching review')
 
 
 def receipt(args):
@@ -518,6 +616,8 @@ def receipt(args):
             'attestation': 'caller-declared; source/event hashes do not prove method quality'}
     if args.reuse_check:
         data['reuse_check'] = ev.artifact(args.reuse_check)
+    if args.review:
+        data['review'] = ev.artifact(args.review)
     if not args.adaptation.strip():
         raise ValueError('Adaptation is required')
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -566,18 +666,69 @@ def operation(args):
         stage_by_id(task, args.stage)
         operations = task.setdefault('operations', {})
         old = operations.get(args.operation_id)
-        if args.result == 'begin':
+        if not args.operation_id.strip():
+            raise ValueError('Stable operation identity required')
+        if args.late:
+            if old or args.result != 'applied' or not args.proof:
+                raise ValueError('Late reconciliation needs a new identity, applied result, and proof')
+            proof = ev.artifact(args.proof)
+            ev.verify_artifact(path.parent, proof)
+            if ev.volatile(proof['path']) or not Path(proof['path']).stat().st_size:
+                raise ValueError('Late reconciliation proof must be durable and nonempty')
+            operations[args.operation_id] = {'stage_id': args.stage, 'status': 'applied',
+                                             'late': True, 'recorded_at': time.time(),
+                                             'reconciliation': proof}
+        elif args.result == 'begin':
             if old:
                 raise ValueError('Operation identity already exists; reconcile instead of retry')
+            if args.proof:
+                raise ValueError('Reconciliation proof belongs to a terminal result')
             operations[args.operation_id] = {'stage_id': args.stage, 'status': 'unknown'}
+            task['status'] = 'IN_PROGRESS'
         else:
             if not old or old['stage_id'] != args.stage or not args.proof:
                 raise ValueError('Reconciliation needs existing operation identity and proof')
-            old.update(status=args.result, reconciliation=ev.artifact(args.proof))
-        task['status'] = 'IN_PROGRESS'
+            proof = ev.artifact(args.proof)
+            if old['status'] == 'unknown':
+                old.update(status=args.result, reconciliation=proof)
+            elif old['status'] != args.result or old.get('reconciliation') != proof:
+                raise ValueError('Operation is already reconciled; preserve the terminal result and proof')
         save(path, task)
     print('Operation recorded; no side effect executed by this command')
     return 0
+
+
+def capture_follow_ups(path):
+    items = read(path)
+    if not isinstance(items, list):
+        raise ValueError('Follow-ups must be a JSON list')
+    result = []
+    seen = set()
+    for entry in items:
+        keys = ('id', 'summary', 'ticket', 'operation_id')
+        if not isinstance(entry, dict) or any(not isinstance(entry[key], str) for key in keys if key in entry):
+            raise ValueError('Follow-up fields must be strings')
+        item = {key: entry[key].strip() for key in keys if key in entry}
+        if not item.get('id') or not item.get('summary') or item['id'] in seen:
+            raise ValueError('Follow-ups need unique IDs and nonempty summaries')
+        seen.add(item['id'])
+        result.append(item)
+    return result
+
+
+def follow_up_status(task, item):
+    ticket = item.get('ticket', '')
+    if re.fullmatch(r'https?://[^/\s]+/\S+|[\w.-]+/[\w.-]+#\d+|[A-Z][A-Z0-9]+-\d+', ticket):
+        return ticket
+    operation_id = item.get('operation_id')
+    operation = task.get('operations', {}).get(operation_id, {})
+    if operation.get('status') == 'applied':
+        try:
+            ev.verify_artifact(Path(task['record_path']).parent, operation['reconciliation'])
+            return 'operation ' + operation_id
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    return 'untracked; record a durable ticket or applied operation'
 
 
 def resume_stage(args):
@@ -664,6 +815,10 @@ def add_parsers(sub):
     p.add_argument('--operation-id', required=True)
     p.add_argument('--result', choices=['begin', 'applied', 'not_applied'], required=True)
     p.add_argument('--proof')
+    p.add_argument('--late', action='store_true', help='Backfill an observed applied operation without a begin record')
+    p = sub.add_parser('review-input', help='Print the current tree and acceptance identity for an independent reviewer')
+    p.add_argument('record')
+    p.add_argument('--stage', required=True, choices=REVIEW_AXES)
     p = sub.add_parser('plan', help='Compile evidenced task facts into cumulative obligations')
     p.add_argument('--facts', required=True)
     p.add_argument('--record', required=True)
@@ -674,6 +829,8 @@ def add_parsers(sub):
         p.add_argument('record')
         if name == 'next':
             p.add_argument('--json', action='store_true')
+        if name == 'finish':
+            p.add_argument('--follow-ups', help='Optional JSON list of deferred work and its tracking references')
         if name == 'stage-complete':
             p.add_argument('--stage', required=True)
             p.add_argument('--receipt', action='append', required=True)
@@ -696,9 +853,19 @@ def add_parsers(sub):
     p.add_argument('--independent', action='store_true')
     p.add_argument('--reviewer-id', default='')
     p.add_argument('--reuse-check')
+    p.add_argument('--review', help='Independent reviewer JSON with the reviewed identity and assessment')
 
 
 def dispatch(args):
+    if args.command == 'review-input':
+        task = load(args.record)
+        refresh(task)
+        stage = stage_by_id(task, args.stage)
+        reviewed = review_input(task, stage)
+        for obligation in stage['required_obligations']:
+            check_component_load(task, stage, obligation, Path(args.record).resolve().parent)
+        print(json.dumps(reviewed, ensure_ascii=False, indent=2))
+        return 0
     if args.command == 'acceptance':
         return acceptance(args)
     if args.command == 'component-event':

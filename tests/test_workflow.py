@@ -221,6 +221,16 @@ class WorkflowTests(unittest.TestCase):
             args += ['--source', source]
         if options.get('reviewer'):
             args += ['--independent', '--reviewer-id', options['reviewer']]
+            if stage in ('standards', 'spec-review'):
+                review = options.get('review', out.with_name(out.stem + '-review.json'))
+                if 'review' not in options:
+                    result = self.cli('review-input', self.record, '--stage', stage)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    review.write_text(json.dumps({'reviewed': json.loads(result.stdout),
+                                                  'reviewer_id': options['reviewer'], 'verdict': 'pass',
+                                                  'assessment': 'Fixture evidence reviewed independently.',
+                                                  **options.get('review_details', {})}))
+                args += ['--review', review]
         if options.get('reuse_check'):
             args += ['--reuse-check', proof]
         result = self.cli(*args)
@@ -316,6 +326,35 @@ class WorkflowTests(unittest.TestCase):
         result = self.cli('stage-complete', self.record, '--stage', 'standards', '--receipt', path)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('acceptance identity', result.stderr)
+
+    def test_changed_acceptance_cannot_be_resigned_with_old_review(self):
+        self.assertEqual(self.plan(intent='review').returncode, 0)
+        self.assertEqual(self.complete('preflight').returncode, 0)
+        self.assertIn('Record current acceptance', self.cli('review-input', self.record, '--stage', 'standards').stderr)
+        self.assertEqual(self.accept().returncode, 0)
+        self.assertIn('Load and record code-review', self.cli('review-input', self.record, '--stage', 'standards').stderr)
+        old = self.make_receipt('standards', 'code-review', reviewer='reviewer-a')
+        self.assertEqual(self.cli('stage-complete', self.record, '--stage', 'standards', '--receipt', old).returncode, 0)
+        row = self.state()['acceptance']['observations'][0]
+        row['observation'] = 'Returned a reformatted fixture result'
+        row['evidence'] = [row['evidence'][0]['path']]
+        self.assertEqual(self.accept([row]).returncode, 0)
+        old_report = Path(json.loads(old.read_text())['review']['path'])
+        result = self.complete('standards', 'code-review', reviewer='reviewer-a', review=old_report)
+        self.assertIn('does not bind current review inputs', result.stderr)
+        result = self.complete('standards', 'code-review', reviewer='reviewer-c')
+        self.assertIn('original reviewer', result.stderr)
+        self.assertEqual(self.complete('standards', 'code-review', reviewer='reviewer-a').returncode, 0)
+        row['observation'] = 'Returned the final fixture result'
+        self.assertEqual(self.accept([row]).returncode, 0)
+        result = self.complete('standards', 'code-review', reviewer='reviewer-c',
+                               review_details={'scope': 'full', 'replacement_reason': 'Original context expired'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        malformed = self.root / 'malformed-review.json'
+        malformed.write_text('[]')
+        result = self.complete('spec-review', 'code-review', reviewer='reviewer-b', review=malformed)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('Reviewer report must be a JSON object', result.stderr)
 
     def test_acceptance_evidence_and_code_tree_remain_current_after_finish(self):
         self.test_short_document_path_recovers_across_processes_and_finishes()
@@ -530,6 +569,33 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('unknown', self.cli('finish', self.record).stderr)
         self.assertEqual(self.cli(*args, '--result', 'applied', '--proof', applied).returncode, 0)
         self.assertEqual(self.cli('finish', self.record).returncode, 0)
+        self.assertEqual(self.cli(*args, '--result', 'applied', '--proof', applied).returncode, 0)
+        self.assertNotEqual(self.cli(*args, '--result', 'not_applied', '--proof', applied).returncode, 0)
+        self.assertEqual(self.state()['status'], 'VERIFIED')
+
+    def test_late_operation_tracks_follow_up_after_finish(self):
+        self.assertEqual(self.plan().returncode, 0)
+        for stage in ('preflight', 'document', 'verify', 'close'):
+            self.assertEqual(self.complete(stage).returncode, 0)
+        follow_ups = self.root / 'follow-ups.json'
+        follow_ups.write_text(json.dumps([{'id': 'fixture', 'summary': 'Verify in another environment',
+                                          'ticket': 'TODO', 'operation_id': 'ticket-fixture'}]))
+        result = self.cli('finish', self.record, '--follow-ups', follow_ups)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('untracked', result.stdout)
+        args = ['operation', self.record, '--stage', 'close', '--operation-id', 'ticket-fixture',
+                '--result', 'applied', '--late']
+        self.assertNotEqual(self.cli(*args).returncode, 0)
+        proof = self.root / 'ticket.md'
+        proof.write_text('Independent observation of an already recorded issue.')
+        result = self.cli(*args, '--proof', proof)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self.state()['operations']['ticket-fixture']['late'])
+        self.assertEqual(self.state()['status'], 'VERIFIED')
+        self.assertNotEqual(self.cli(*args, '--proof', proof).returncode, 0)
+        self.assertIn('operation ticket-fixture', self.cli('finish', self.record).stdout)
+        proof.write_text('Changed observation')
+        self.assertIn('untracked', self.cli('finish', self.record).stdout)
 
     def test_structured_routing_fixtures_not_natural_language_classification(self):
         cases = json.loads((SCRIPT.parents[1] / 'tests/fixtures/routes.json').read_text())
@@ -813,17 +879,25 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.plan().returncode, 0)
         preflight = self.make_receipt('preflight')
         cost = self.root / 'cost.json'
+        usage = {
+            'last_request': {'tokens': 200, 'basis': 'last fixture request'},
+            'main_total': {'tokens': 1100, 'basis': 'fixture sum including cached input'},
+            'child_total': {'tokens': 100, 'basis': 'archived fixture child token counts'},
+        }
         cost.write_text(json.dumps({'tokens': 1200, 'duration_ms': 3400,
-                                    'basis': 'subagent timing.json totals'}))
+                                   'basis': 'fixture measurement sources', **usage}))
         result = self.cli('stage-complete', self.record, '--stage', 'preflight',
                           '--receipt', preflight, '--cost', cost)
         self.assertEqual(result.returncode, 0, result.stderr)
         stage = self.state()['stages'][0]
         self.assertEqual(stage['costs'][-1]['tokens'], 1200)
-        self.assertEqual(stage['costs'][-1]['basis'], 'subagent timing.json totals')
+        self.assertEqual(stage['costs'][-1]['basis'], 'fixture measurement sources')
+        for key, metric in usage.items():
+            self.assertEqual(stage['costs'][-1][key], metric)
         self.assertIn('at', stage['costs'][-1])
         self.assertTrue(stage['completions'])
-        for bad in ({'tokens': -5, 'basis': 'x'}, {'tokens': 5}, {'tokens': 'many', 'basis': 'x'}):
+        for bad in ({'tokens': -5, 'basis': 'x'}, {'tokens': 5}, {'tokens': 'many', 'basis': 'x'},
+                    {'main_total': {'tokens': 10}, 'basis': 'root basis only'}):
             with self.subTest(bad=bad):
                 path = self.root / ('bad-cost-' + str(len(list(self.root.glob('bad-cost-*.json')))) + '.json')
                 path.write_text(json.dumps(bad))

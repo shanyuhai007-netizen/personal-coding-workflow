@@ -233,7 +233,7 @@ def validate(record, repo):
 
 
 def main():
-    workflow_commands = {'plan', 'next', 'finish', 'acceptance', 'stage-complete', 'stage-receipt', 'receipt-refile', 'stage-resume', 'operation', 'component-event'}
+    workflow_commands = {'plan', 'next', 'finish', 'acceptance', 'stage-complete', 'stage-receipt', 'receipt-refile', 'stage-resume', 'operation', 'component-event', 'review-input'}
     workflow = None
     if sys.argv[1:2] and sys.argv[1] in workflow_commands:
         sys.dont_write_bytecode = True
