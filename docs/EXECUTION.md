@@ -33,7 +33,7 @@ python3 scripts/evidence.py next /evidence/task.json --json
 
 显示目标、修订号、阶段、所需组件、出口和状态；详细身份留JSON。next选择依赖齐备的首项；必要业务澄清不阻塞独立research。多单元的真实票依赖图留spec，工具不调度独立票组。已有实现仍先核验，适用时用reuse满足对应阶段，不能重新施工。预算耗尽保持受阻，继续其他已就绪项。修复根因并保留证明后，可用 `stage-resume --stage <id> --reason <具体修复> --proof <复验依据>` 开启唯一一次新的有限重试周期；旧失败次数保留在attempt_history。再次耗尽后需新任务及重新审查范围，不可继续清零重试。
 
-多票批量（一次会话收尾多张独立票，如「做完当前 open issues」）不按票各建台账，用单份 facts 承载整批：goal 写明批次范围，conditions 按票前缀分组（如 `56-1`、`47-2`），source 各指向对应原票条件的本地快照；异构票（修复 / 调查 / 功能混批）facts 取并集并在 evidence 注明混合依据，观测逐条件归位，finish 按全部条件收口。计划落成即按 [CONTEXT.md](CONTEXT.md) 多票默认编排执行——已批票多于一张时逐票实施子上下文、worktree 隔离、共享 seam 的票按依赖串行。批量入口缺这一形状时，会话容易整体绕开台账另做手工收口（2026-11-22 实测：4 票收尾会话未建账，证据散落无状态机）；不要因票多而弃账，形状不合适就修订 facts 而不是绕开。
+多票批量（一次会话收尾多张独立票，如「做完当前 open issues」）不按票各建台账，用单份 facts 承载整批：goal 写明批次范围，conditions 按票前缀分组（如 `56-1`、`47-2`），source 各指向对应原票条件的本地快照；异构票（修复 / 调查 / 功能混批）facts 取并集并在 evidence 注明混合依据，观测逐条件归位，finish 按全部条件收口。计划落成即按 [CONTEXT.md](CONTEXT.md) 多票默认编排执行——已批票多于一张时逐票实施子上下文、worktree 隔离、共享 seam 的票按依赖串行。会话以 handoff 文件接手多票收尾时入口相同：按 handoff 内票清单生成上述单份批次 facts，plan 后进 CONTEXT.md 默认编排；handoff 是接续载体不是免账凭证，缺的事实先补查再入账。批量入口缺这一形状时，会话容易整体绕开台账另做手工收口（2026-11-22 实测：4 票收尾会话未建账，证据散落无状态机）；不要因票多而弃账，形状不合适就修订 facts 而不是绕开。
 
 台账与证据目录放在仓外的持久位置：系统临时目录（/tmp、$TMPDIR 等）会被定期清理，`plan` 与 `finish` 拒绝此类路径；项目同级 `.personal-coding-evidence/` 或 `~/.local/state/personal-coding/<repo>/<task>/` 是可用约定。合成测试以 `PERSONAL_CODING_ALLOW_VOLATILE_RECORD=1` 显式豁免。
 
@@ -102,13 +102,13 @@ python3 scripts/evidence.py finish /evidence/task.json
 
 acceptance 只登记观测及当前完整树，不授予完成；缺项可先登记，finish 逐项拒绝缺失、失败或未知条件。工具自动保存报告/证据 hash、原条件及树身份；原文、证据或代码变化使旧观测失效。修订条件必须 replan 并写具体 reason，历史保留前后投影；同标签改写也需重新核验。观测变化会让两轴评审和 close 待验证，最终报告在评审前固定，返工后更新并复审。
 
-收口直接展示每项条件、行为、目标版本/实例/环境、观察、证据及剩余动作。 通过数从对应日志提取，归属以 `run` 的 `tree_before` / `tree_after` 为准。两者均与交付树一致时才列为终树检查。文件数从最终评审快照对应的 base→tree Git 差异重算，采用相同重命名口径。树身份只能证明对应的本地代码；部署版本、真实服务实例和样本范围由原始证据及 reviewer 核对。只要求本地修复时 target 使用约定本地实例；生产发布状态单列。原请求要求生产故障消失时保留该条件，未复验不能以本地测试替代。
+收口直接展示每项条件、行为、目标版本/实例/环境、观察、证据及剩余动作。 通过数从对应日志提取，归属以 `run` 的 `tree_before` / `tree_after` 为准。两者均与交付树一致时才列为终树检查。多票批量下每票的 run 检查以其自身 worktree 的 `tree_before` / `tree_after` 归属，评审树＝检查树＝该票提交树，票间无需 stash 互让。文件数从最终评审快照对应的 base→tree Git 差异重算，采用相同重命名口径。树身份只能证明对应的本地代码；部署版本、真实服务实例和样本范围由原始证据及 reviewer 核对。只要求本地修复时 target 使用约定本地实例；生产发布状态单列。原请求要求生产故障消失时保留该条件，未复验不能以本地测试替代。
 
 评审材料按 [评审输入](../ADAPTERS.md#评审输入) 提供相关原始证据。登记各就绪评审轴的组件加载后，运行 `review-input <task.json> --stage standards|spec-review`，把返回的 JSON 连同实际验收报告、日志与快照交给 reviewer。由 reviewer 输出 JSON，含原样的 `reviewed` 对象、该独立上下文的 `reviewer_id`、`verdict` 和非空 `assessment`，说明所核验的原始证据及结论。归档原始输出，`stage-receipt --review <reviewer.json>` 用其绑定当前验收、条件及树。相同代码树上的验收变化由原 reviewer 核对增量并出新报告。原 reviewer 无法继续时，另请独立 reviewer 对完整材料重审，在报告中写 `"scope": "full"` 和具体 `replacement_reason`。保留初评及增量原文。从早期版本接续时，缺独立报告绑定的两轴回执需补做复核。结构与 hash 校验不证明观察真实或结论足够，检查日志全绿也不能独自证明全部原始目标达成。
 
 ## 副作用对账
 
-检查项目的 [发布授权表](../RELEASE.template.md) 与宿主权限。本地 commit 遵循已授权工作及仓库规则。Issue 的建、评、关各自沿用覆盖目标仓库和内容的现有授权，与 push 分开处理。push、部署与公开外发各自按适用的显式授权执行。授权依据留在动作记录，用户规则和发布限制优先。
+检查项目的 [发布授权表](../RELEASE.template.md) 与宿主权限。本地 commit 遵循已授权工作及仓库规则。Issue 的建、评、关各自沿用覆盖目标仓库和内容的现有授权，与 push 分开处理。push、部署与公开外发各自按适用的显式授权执行。远程删除、清理类操作（删远端分支、清理云资源 / 环境、撤销已发布物）同入显式授权档；执行中发现待清理资源先记为观察项，不未经授权顺手删除。授权缺失只挂起对应动作，其余动作按各自授权继续。授权依据留在动作记录，用户规则和发布限制优先。
 
 对可能发生回执丢失的动作，执行前用 `operation task.json --stage close --operation-id <稳定操作身份> --result begin` 持久记录 unknown。查到实际产物后，提交 `--result applied|not_applied --proof <对账文件>`；unknown 阻止 finish，重复 begin 被拒。需要重试时先确认未应用和幂等性，再使用可追溯的新操作身份。已执行且没有 begin 记录的动作（如收口后的本地提交或后续会话已完成的跟踪动作），可凭提交对象、工单快照等持久证据用 `--result applied --late --proof <凭据>` 补录。补录保留登记时间和已有 VERIFIED，命令仅记账。
 
